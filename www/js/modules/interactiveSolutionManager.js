@@ -40,6 +40,7 @@ export class InteractiveSolutionManager {
     }
     
 
+    // ✅ YENİ, DAHA SAĞLAM generateStepOptions FONKSİYONU
     generateStepOptions(stepIndex) {
         if (!this.solutionData || stepIndex >= this.totalSteps || stepIndex < 0) {
             throw new Error("Geçersiz adım indeksi.");
@@ -51,36 +52,37 @@ export class InteractiveSolutionManager {
         // 1. Doğru seçeneği ekle
         const correctOption = {
             latex: currentStepData.cozum_lateks,
+            svg: currentStepData.cozum_svg, // Sunucudan gelen SVG'yi ekle
             isCorrect: true,
             explanation: currentStepData.adimAciklamasi || "Bu adım, çözüm için doğru yaklaşımdır."
         };
         options.push(correctOption);
 
-        // 2. Önceden alınmış yanlış seçenekleri ekle (Eğer varsa ve kaliteliyse)
+        // 2. API'den gelen yanlış seçenekleri (eğer varsa) ekle
         if (currentStepData.yanlisSecenekler && currentStepData.yanlisSecenekler.length > 0) {
             currentStepData.yanlisSecenekler.slice(0, 2).forEach(opt => {
-                // Kalite kontrolü: Çok bariz olanları ekleme
-                if (opt.metin_lateks && !opt.metin_lateks.includes('\\text{')) {
-                     options.push({
-                        latex: opt.metin_lateks,
-                        isCorrect: false,
-                        explanation: opt.hataAciklamasi
-                    });
-                }
+                options.push({
+                    latex: opt.metin_lateks,
+                    svg: opt.metin_svg, // Sunucudan gelen SVG'yi ekle
+                    isCorrect: false,
+                    explanation: opt.hataAciklamasi
+                });
             });
         }
 
-        // 3. YENİ VE AKILLI FALLBACK: Eğer yeterli seçenek yoksa, kendimiz üretelim
+        // 3. GARANTİ MEKANİZMASI: Eğer toplamda 3 seçenek yoksa, kendimiz üretelim.
+        // Bu, API eksik veri gönderse bile uygulamanın çökmesini engeller.
         while (options.length < 3) {
             const wrongLatex = generateWrongAnswer(correctOption.latex, options.length - 1);
             options.push({
                 latex: wrongLatex,
+                // Not: Bu seçenekler için SVG'miz yok, bu yüzden `svg` alanı tanımsız olacak.
+                // Arayüz kodu bunu dikkate almalı.
                 isCorrect: false,
-                explanation: `Bu ifade, doğru cevabın küçük bir hata (örneğin, bir işaret veya hesaplama hatası) içeren halidir. Dikkatli inceleyerek doğruya ulaşabilirsin.`
+                explanation: `Bu ifade, doğru cevabın küçük bir hata içeren halidir.`
             });
         }
 
-        // Seçenekleri 3 ile sınırla ve karıştır
         this.currentOptions = this.shuffleAndAssignIds(options.slice(0, 3));
 
         return {
@@ -93,7 +95,6 @@ export class InteractiveSolutionManager {
             attempts: this.totalAttempts
         };
     }
-
     /**
      * Seçenekleri karıştırır ve arayüzde kullanılmak üzere geçici ID'ler atar.
      * @param {Array<object>} options Karıştırılacak seçenekler dizisi.

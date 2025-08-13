@@ -15,7 +15,7 @@ import { OptimizedCanvasManager } from '../modules/canvasManager.js';
 import { AdvancedErrorHandler } from '../modules/errorHandler.js';
 import { StateManager } from '../modules/stateManager.js';
 import { smartGuide } from '../modules/smartGuide.js';
-import { mathSymbolPanel } from '../modules/mathSymbolPanel.js';
+//import { mathSymbolPanel } from '../modules/mathSymbolPanel.js';
 import { interactiveSolutionManager } from '../modules/interactiveSolutionManager.js';
 import { globalRenderManager } from '../modules/globalRenderManager.js';
 import { generateWrongAnswer } from '../utils/mathUtils.js';
@@ -36,6 +36,7 @@ const stateManager = new StateManager();
 
 // --- Global DOM Önbelleği ---
 const elements = {};
+let isProcessingNewProblem = false;
 
 
 // --- UYGULAMA BAŞLANGIÇ NOKTASI ---
@@ -188,59 +189,61 @@ function initializeSymbolPanels() {
     });
 }
 
-// js/pages/index.js dosyasındaki mevcut resetForNewProblem fonksiyonunu silip,
-// yerine bu yeni ve daha güvenli versiyonu yapıştırın.
-
-// js/pages/index.js dosyasındaki mevcut resetForNewProblem fonksiyonunu silip,
-// yerine bu yeni ve daha güvenli versiyonu yapıştırın.
+// www/js/pages/index.js -> Bu fonksiyonu eskisiyle tamamen değiştirin
 
 function resetForNewProblem() {
+    console.log('🧹 YENİ PROBLEM İÇİN TAM SIFIRLAMA BAŞLATILDI...');
+
+    // 1. ÖNCEKİ CANVAS'I SİLMEK YERİNE SADECE İÇİNİ TEMİZLE
+    if (canvasManager.isCanvasReady('handwritingCanvas')) {
+        canvasManager.clear('handwritingCanvas', false); // Durumu kaydetmeden temizle
+        console.log('✅ Canvas içeriği temizlendi.');
+    } else {
+        canvasManager.initCanvas('handwritingCanvas');
+        console.log('✅ Canvas yeniden başlatıldı.');
+    }
+
     clearInputAreas();
     preRenderedCache.clear();
-    console.log('🧹 YENİ PROBLEM İÇİN TAM SIFIRLAMA...');
-
-    // 1. Modül Yöneticilerini Sıfırla
+    
+    // Modül Yöneticilerini Sıfırla
     interactiveSolutionManager.reset();
     smartGuide.reset();
     console.log('✅ İnteraktif ve Mentor modülleri sıfırlandı.');
 
-    // 2. SADECE DİNAMİK İÇERİK ALANLARINI TEMİZLE
-    const dynamicContentIds = [
-        'question', // Soru özetinin yüklendiği alan
-        'solution-output', // Tam çözümün yüklendiği alan
-        'step-by-step-container' // Adım adım çözümün yüklendiği alan
-    ];
+    // Dinamik içerik alanlarını temizle
+    const dynamicContentIds = ['question', 'solution-output', 'step-by-step-container'];
     dynamicContentIds.forEach(id => {
-        if (elements[id]) {
-            elements[id].innerHTML = '';
-        }
+        if (elements[id]) elements[id].innerHTML = '';
     });
 
-    // 3. ANA KONTEYNERLARI SİLMEDEN SADECE GİZLE
-    const containerIdsToHide = [
-        'question-summary-container',
-        'top-action-buttons', // Butonları silme, sadece konteyneri gizle
-        'solving-workspace',
-        'result-container',
-        'goBackBtn'
-    ];
+    // Ana konteynerları gizle
+    const containerIdsToHide = ['question-summary-container', 'top-action-buttons', 'solving-workspace', 'result-container', 'goBackBtn'];
     containerIdsToHide.forEach(id => {
-        if (elements[id]) {
-            elements[id].classList.add('hidden');
-        }
+        if (elements[id]) elements[id].classList.add('hidden');
     });
     console.log('✅ Konteynerlar temizlendi ve gizlendi.');
-    
-    // --- YENİ EKLENEN KOD BAŞLANGICI ---
+
     // Giriş butonlarını tekrar aktif hale getir.
-    if (elements['recognizeHandwritingBtn']) {
-        elements['recognizeHandwritingBtn'].disabled = false;
-    }
-    if (elements['startFromTextBtn']) {
-        elements['startFromTextBtn'].disabled = false;
-    }
-    console.log('✅ Giriş butonları yeniden aktifleştirildi.');
-    // --- YENİ EKLENEN KOD SONU ---
+    if (elements['recognizeHandwritingBtn']) elements['recognizeHandwritingBtn'].disabled = true; // Başlangıçta pasif
+    if (elements['startFromTextBtn']) elements['startFromTextBtn'].disabled = true; // Başlangıçta pasif
+    
+    // --- BURASI KRİTİK DÜZELTME ---
+    // Problem çözümü sırasında pasif hale getirilen tüm mod butonlarını tekrar etkinleştir.
+    const buttonsToEnable = [
+        'photo-mode-btn', 
+        'handwriting-mode-btn', 
+        'switchToCanvasBtn', 
+        'switchToKeyboardBtn'
+    ];
+    buttonsToEnable.forEach(id => {
+        if (elements[id]) {
+            elements[id].disabled = false;
+            elements[id].classList.remove('disabled-btn'); // Görsel stili de sıfırla
+        }
+    });
+    console.log('✅ Mod değiştirme butonları tekrar aktif edildi.');
+    // --- DÜZELTME SONU ---
 
 
     // Durum mesajını temizle
@@ -279,16 +282,24 @@ function setupEventListeners() {
     
     // --- KLAVYE İÇİN DÜZELTİLMİŞ DİNLEYİCİ ---
     add('keyboard-input', 'input', (e) => {
+        // Butonun aktif olup olmayacağına karar vermek için KIRPILMIŞ değeri kullan.
         const textInput = e.target.value.trim();
         if (elements['startFromTextBtn'] && elements['question-setup-area']) {
-            // YENİ MANTIK: Butonun aktif olması için hem alanın kilitli OLMAMASI hem de input'un dolu olması gerekir.
             const isAreaLocked = elements['question-setup-area'].classList.contains('disabled-area');
             elements['startFromTextBtn'].disabled = isAreaLocked || textInput === '';
         }
+    });
 
-        // Kullanıcı metin alanından ayrıldığında girdiyi state'e kaydet.
-        if (textInput) {
-            stateManager.setProblemSource({ type: 'text', data: textInput });
+    // YENİ YAKLAŞIM: 'blur' olayı (kullanıcı input'tan ayrıldığında) state'i günceller.
+    // Bu, her tuş vuruşunda state'in güncellenmesini ve arayüzün yeniden çizilmesini önler.
+    add('keyboard-input', 'blur', (e) => {
+        // State'i güncellemek için ORİJİNAL (kırpılmamış) değeri kullan.
+        const rawTextInput = e.target.value; 
+        
+        // Sadece input'ta gerçekten bir metin varsa state'i güncelle.
+        if (rawTextInput) {
+            stateManager.setProblemSource({ type: 'text', data: rawTextInput });
+            console.log(`✅ Klavye girdisi state'e kaydedildi: "${rawTextInput}"`);
         }
     });
 
@@ -553,7 +564,7 @@ async function renderApp(state) {
 
     // Hangi görünümde hangi elementlerin görüneceğini tanımlayan bir harita oluşturalım.
     const visibilityMap = {
-        'question-setup-area': true, // Her zaman görünür olacak.
+        'question-setup-area': true,
         'question-summary-container': ['summary', 'fullSolution', 'interactive', 'solving'].includes(view),
         'top-action-buttons': ['summary'].includes(view),
         'solving-workspace': ['solving'].includes(view),
@@ -571,17 +582,34 @@ async function renderApp(state) {
 
     if (elements['question-setup-area']) {
         const isSetupView = view === 'setup';
-        // YENİ MANTIK: Alan, eğer 'setup' görünümünde DEĞİLSE veya bir YÜKLEME işlemi VARSA pasif olmalıdır.
+        // Bir işlem devam ediyor mu veya artık kurulum ekranında değil miyiz?
         const shouldBeDisabled = !isSetupView || ui.isLoading;
+
+        // 1. Ana kurulum alanını pasifleştir (Mevcut kodun aynısı)
         elements['question-setup-area'].classList.toggle('disabled-area', shouldBeDisabled);
 
+        // 2. Mod değiştirme butonlarını doğrudan hedef alarak pasifleştir (YENİ EKLENEN KISIM)
+        const photoModeBtn = elements['photo-mode-btn'];
+        const handwritingModeBtn = elements['handwriting-mode-btn'];
+
+        if (photoModeBtn && handwritingModeBtn) {
+            // Butonların tıklanmasını engelle
+            photoModeBtn.disabled = shouldBeDisabled;
+            handwritingModeBtn.disabled = shouldBeDisabled;
+
+            // Görsel olarak da pasif olduklarını belirtmek için bir sınıf ekle
+            photoModeBtn.classList.toggle('disabled-btn', shouldBeDisabled);
+            handwritingModeBtn.classList.toggle('disabled-btn', shouldBeDisabled);
+        }
+
+        // 3. Canvas ve klavye girdisini yönet (Mevcut kodun aynısı)
         if (shouldBeDisabled) {
             canvasManager.lock('handwritingCanvas');
         } else {
             canvasManager.unlock('handwritingCanvas');
         }
 
-         if (elements['keyboard-input']) {
+        if (elements['keyboard-input']) {
             elements['keyboard-input'].readOnly = shouldBeDisabled;
         }
     }
@@ -795,132 +823,161 @@ function clearInputAreas() {
     console.log('✅ All input areas cleared');
 }
 
-// www/js/pages/index.js -> handleNewProblem için NİHAİ ve HATASIZ versiyon
+// www/js/pages/index.js
 
 async function handleNewProblem() {
-    // 1. Gerekli güncel state ve kullanıcı verisini al.
-
-
-    if (elements['recognizeHandwritingBtn']) {
-        elements['recognizeHandwritingBtn'].disabled = true;
-    }
-    if (elements['startFromTextBtn']) {
-        elements['startFromTextBtn'].disabled = true;
-    }
-    const state = stateManager.state;
-    const userData = state.user;
-    let problemSource = null;
-
-    // 2. O anki aktif giriş moduna göre, veriyi DOĞRUDAN arayüzden (DOM) oku.
-    const currentInputMode = state.ui.inputMode;
-
-    if (currentInputMode === 'photo') {
-        // Fotoğraf modu için kaynak zaten dosya seçildiğinde state'e yazılmıştı.
-        problemSource = state.problem.source;
-    } else if (currentInputMode === 'handwriting') {
-        // ======================= DÜZELTME BAŞLANGICI =======================
-        // State'e güvenmek yerine, o an hangi giriş alanının görünür olduğunu DOM'dan kontrol et.
-        // Bu, state senkronizasyon sorunlarını tamamen ortadan kaldırır.
-        const isCanvasVisible = elements['handwriting-canvas-container'] && !elements['handwriting-canvas-container'].classList.contains('hidden');
-
-        if (isCanvasVisible) {
-            // Eğer çizim alanı görünürse, veriyi canvas'tan al.
-            const canvasDataUrl = canvasManager.toDataURL('handwritingCanvas');
-            if (canvasDataUrl && !isCanvasEmpty(canvasDataUrl)) {
-                problemSource = { type: 'image', data: canvasDataUrl };
-            }
-        } else {
-            // Değilse, klavye giriş alanı görünür demektir. Veriyi metin kutusundan al.
-            const textInput = elements['keyboard-input'].value.trim();
-            if (textInput) {
-                problemSource = { type: 'text', data: textInput };
-            }
-        }
-        // ======================== DÜZELTME SONU ========================
-    }
-
-    // 3. Verinin alınıp alınamadığını KESİN olarak kontrol et.
-    if (!problemSource || !problemSource.data) {
-        showError("Lütfen çözmek için bir soru girin, çizin veya fotoğrafını yükleyin.", false);
-        return; // İşlemi burada durdur.
-    }
-    
-    // 4. API'ye gönderilecek veriyi konsola yazdır (hata ayıklama için).
-    console.log("✅ API'ye gönderilmek üzere hazırlanan problem:", problemSource.type, problemSource.data.substring(0, 50) + '...');
-
-    // --- Fonksiyonun geri kalanı aynı kalacak ---
-
-    // Sorgu hakkı kontrolü...
-    const sub = userData.subscription || { tier: 'free' };
-    const hasTokens = (userData.tokenQueries || 0) > 0;
-    const hasDailyQueries = (userData.dailyQueryCount || 0) < 3;
-    const hasSubscriptionQueries = sub.tier !== 'free' && (sub.monthlyQueryCount < sub.monthlyQueryLimit);
-
-    if (!hasTokens && !hasDailyQueries && !hasSubscriptionQueries) {
-        showErrorWithAdOption(
-            "Tüm Sorgu Haklarınız Bitti!",
-            "Reklam izleyerek 1 kredi kazanabilir veya premium'a geçerek sınırları kaldırabilirsiniz."
-        );
+    // --- GÜVENLİK KİLİDİ BAŞLANGICI ---
+    if (isProcessingNewProblem) {
+        console.warn("Zaten bir problem işleniyor, lütfen bekleyin.");
+        showTemporaryMessage("Lütfen mevcut işlemin bitmesini bekleyin...", "⏳", 1500);
         return;
     }
+    
+    // Kilidi aktif et ve TÜM ilgili butonları pasifleştir.
+    isProcessingNewProblem = true;
+    // BAŞLATMA BUTONLARI
+    if (elements['recognizeHandwritingBtn']) elements['recognizeHandwritingBtn'].disabled = true;
+    if (elements['startFromTextBtn']) elements['startFromTextBtn'].disabled = true;
+    if (elements['startFromPhotoBtn']) elements['startFromPhotoBtn'].disabled = true;
+    
+    // MOD DEĞİŞTİRME BUTONLARI (YENİ EKLENEN KISIM)
+    if (elements['switchToCanvasBtn']) elements['switchToCanvasBtn'].disabled = true;
+    if (elements['switchToKeyboardBtn']) elements['switchToKeyboardBtn'].disabled = true;
+    if (elements['photo-mode-btn']) elements['photo-mode-btn'].disabled = true;
+    if (elements['handwriting-mode-btn']) elements['handwriting-mode-btn'].disabled = true;
 
-    // İşlem başarılıysa, merkezi state'i yeni veriyle güncelle.
-    stateManager.setProblemSource(problemSource);
     stateManager.setLoading(true, 'Soru analiz ediliyor...');
+    // --- GÜVENLİK KİLİDİ SONU ---
+    // --- GÜVENLİK KİLİDİ SONU ---
 
-    const loadingMessages = [
-        'Çözüm stratejisi belirleniyor...',
-        'Adımlar oluşturuluyor...',
-        'Son kontroller yapılıyor...'
-    ];
-    const animationPromise = showTemporaryMessage(loadingMessages, '⚙️', 2000);
-
-    let problemContextForPrompt = (problemSource.type === 'text')
-        ? problemSource.data
-        : "Görseldeki matematik problemini çöz.";
-    let imageBase64 = (problemSource.type === 'image')
-        ? problemSource.data.split(',')[1]
-        : null;
+    let animationPromise;
 
     try {
-        const unifiedSolution = await getUnifiedSolution(problemContextForPrompt, imageBase64);
+        const state = stateManager.state;
+        const userData = state.user;
+        let problemSource = null;
 
-        if (!unifiedSolution) {
-            throw new Error("Çözüm oluşturulamadı. Lütfen sorunuzu kontrol edip tekrar deneyin.");
+        // O anki aktif giriş moduna göre, veriyi DOĞRUDAN arayüzden (DOM) oku.
+        const currentInputMode = state.ui.inputMode;
+
+        if (currentInputMode === 'photo') {
+            problemSource = state.problem.source;
+        } else if (currentInputMode === 'handwriting') {
+            const isCanvasVisible = elements['handwriting-canvas-container'] && !elements['handwriting-canvas-container'].classList.contains('hidden');
+            if (isCanvasVisible) {
+                const canvasDataUrl = canvasManager.toDataURL('handwritingCanvas');
+                if (canvasDataUrl && !isCanvasEmpty(canvasDataUrl)) {
+                    problemSource = { type: 'image', data: canvasDataUrl };
+                }
+            } else {
+                const textInput = elements['keyboard-input'].value.trim();
+                if (textInput) {
+                    problemSource = { type: 'text', data: textInput };
+                }
+            }
+        }
+
+        if (!problemSource || !problemSource.data) {
+            showError("Lütfen çözmek için bir soru girin, çizin veya fotoğrafını yükleyin.", false);
+            // Hata durumunda, 'finally' bloğu kilidi açacağı için burada erken çıkış yapabiliriz.
+            return;
+        }
+        
+        // Sorgu hakkı kontrolü... (Mevcut kodunuzdaki gibi)
+        const sub = userData.subscription || { tier: 'free' };
+        const hasTokens = (userData.tokenQueries || 0) > 0;
+        const hasDailyQueries = (userData.dailyQueryCount || 0) < 3;
+        const hasSubscriptionQueries = sub.tier !== 'free' && (sub.monthlyQueryCount < sub.monthlyQueryLimit);
+
+        if (!hasTokens && !hasDailyQueries && !hasSubscriptionQueries) {
+            showErrorWithAdOption(
+                "Tüm Sorgu Haklarınız Bitti!",
+                "Reklam izleyerek 1 kredi kazanabilir veya premium'a geçerek sınırları kaldırabilirsiniz."
+            );
+            return;
+        }
+
+        // Animasyon ve API isteği
+        stateManager.setProblemSource(problemSource);
+
+        const loadingMessages = [
+            'Çözüm stratejisi belirleniyor...',
+            'Adımlar oluşturuluyor...',
+            'Son kontroller yapılıyor...',
+            'Soru Özeti Gösteriliyor...'
+        ];
+        const problemContextForPrompt = (problemSource.type === 'text') ? problemSource.data : "Görseldeki matematik problemini çöz.";
+        const imageBase64 = (problemSource.type === 'image') ? problemSource.data.split(',')[1] : null;
+
+
+        // --- YENİ VE DOĞRU MANTIK BURADA ---
+
+        // 1. İki asenkron işlemi de (API çağrısı ve animasyon) aynı anda başlatın.
+        //    Ancak bitmelerini "await" ile henüz beklemeyin. Onları birer promise olarak değişkenlere atayın.
+        const apiCallPromise = getUnifiedSolution(problemContextForPrompt, imageBase64);
+        const animationPromise = showTemporaryMessage(loadingMessages, '⚙️', 2000); // Animasyonun en az 2 saniye sürmesini sağlarız.
+
+        // 2. Promise.all kullanarak her iki işlemin de BİRLİKTE tamamlanmasını bekleyin.
+        //    API çağrısı 5 saniye, animasyon 2 saniye sürerse, bu satır toplam 5 saniye bekler.
+        const [unifiedSolution] = await Promise.all([apiCallPromise, animationPromise]);
+
+        // 3. Artık her şey bittiğine göre güvenle devam edebiliriz.
+        //    Buraya gelindiğinde hem API'den cevap alınmış hem de animasyon süresi dolmuş olur.
+
+        if (!unifiedSolution || unifiedSolution._error) {
+            const errorMessage = unifiedSolution?._fallback ? "Bu soru bir matematik problemi olarak anlaşılamadı. Lütfen daha net bir soru sorun." : "Çözüm oluşturulamadı. Lütfen sorunuzu kontrol edip tekrar deneyin.";
+            throw new Error(errorMessage);
         }
 
         const updatedUserData = await FirestoreManager.getUserData(auth.currentUser);
         if (updatedUserData) stateManager.setUser(updatedUserData);
 
-        await animationPromise;
+        // Artık bekleme (await) gerekmiyor, çünkü Promise.all bunu zaten yaptı.
         stateManager.setSolution(unifiedSolution);
         stateManager.setView('summary');
         showSuccess(`Soru başarıyla analiz edildi!`, true, 4000);
 
     } catch (error) {
-        await animationPromise;
-        showError(error.message, true);
-        resetForNewProblem();
+        if(animationPromise) await animationPromise; // Hata olsa bile animasyonun bitmesini bekle
+        console.error("handleNewProblem içinde bir hata oluştu:", error);
+        showError(error.message || "Beklenmedik bir sorun oluştu.", true, resetForNewProblem);
+        // Hata durumunda sistemi sıfırla
+        resetForNewProblem(); 
     } finally {
+        // --- GARANTİLİ KİLİT AÇMA BLOĞU ---
+        // İşlem başarılı da olsa, hata da alsa bu blok HER ZAMAN çalışır.
+        isProcessingNewProblem = false;
         stateManager.setLoading(false);
+        
+        // Arayüzün mevcut durumuna göre butonları tekrar doğru duruma getir.
+        const currentState = stateManager.state.ui.view;
+        // Eğer işlem sonrası hala 'setup' ekranındaysak (yani hata olduysa), butonları tekrar kontrol et.
+        if (currentState === 'setup') {
+             if (elements['recognizeHandwritingBtn']) elements['recognizeHandwritingBtn'].disabled = isCanvasEmpty(canvasManager.toDataURL('handwritingCanvas'));
+             if (elements['startFromTextBtn']) elements['startFromTextBtn'].disabled = (elements['keyboard-input'].value.trim() === '');
+             if (elements['startFromPhotoBtn']) elements['startFromPhotoBtn'].disabled = !elements['imagePreview'].src;
+        }
+        console.log("✅ İşlem kilidi 'finally' bloğunda güvenli bir şekilde açıldı.");
+        // --- KİLİT AÇMA SONU ---
     }
 }
+// www/js/pages/index.js -> Bu fonksiyonu daha güvenli haliyle değiştirin
 
-/**
- * Canvas'ın boş olup olmadığını (sadece beyaz renk içerip içermediğini) kontrol eder.
- * Bu yardımcı fonksiyonu `handleNewProblem` fonksiyonunun altına ekleyin.
- * @param {string} dataUrl - Canvas'tan alınan base64 data URL'i.
- * @returns {boolean} - Canvas boş ise true döner.
- */
 function isCanvasEmpty(dataUrl) {
+    // GÜVENLİK KONTROLÜ: Eğer dataUrl null veya geçersiz bir değerse, boş kabul et.
+    if (!dataUrl || typeof dataUrl !== 'string') {
+        return true;
+    }
+
     const marker = ';base64,';
     const base64Index = dataUrl.indexOf(marker);
-    if (base64Index === -1) return true;
+    if (base64Index === -1) {
+        return true;
+    }
 
-    // Çok kısa bir base64 string'i genellikle boş bir resmi temsil eder.
     const base64Data = dataUrl.substring(base64Index + marker.length);
-    // 500 byte'dan küçükse boş kabul edelim (bu değer test edilerek ayarlanabilir).
-    return base64Data.length < 500;
+    // Çok kısa bir base64 string'i (örn: 200 karakterden az) genellikle boş bir resmi temsil eder.
+    return base64Data.length < 200; 
 }
  
 
@@ -1414,28 +1471,146 @@ function waitForDOMReady() {
     });
 }
 // index.js
+// www/js/pages/index.js içine yeni fonksiyonlar ekleyin
+
+/**
+ * İnteraktif çözüm arayüzünün ana iskeletini SADECE BİR KEZ çizer.
+ */
+function buildInteractiveWorkspace() {
+    const container = elements['solution-output'];
+    if (!container) return false;
+
+    container.innerHTML = `
+        <div class="interactive-solution-workspace p-4 md:p-6 bg-white rounded-lg shadow-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">İnteraktif Çözüm</h3>
+                <button id="back-to-main-menu-btn" class="btn btn-secondary !py-2 !px-3">Ana Menüye Dön</button>
+            </div>
+            
+            <div class="progress-section mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div class="progress-info">
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 id="interactive-step-counter" class="text-lg font-semibold text-gray-800">Adım Yükleniyor...</h4>
+                            <span id="interactive-progress-percentage" class="text-sm text-gray-500"></span>
+                        </div>
+                        <div class="progress-bar bg-gray-200 h-2 rounded-full overflow-hidden">
+                            <div id="interactive-progress-fill" class="progress-fill bg-blue-500 h-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="attempt-info">
+                        <div class="flex justify-end items-center gap-x-2 mb-2">
+                            <h4 class="text-lg font-semibold text-gray-800">Deneme Hakkı:</h4>
+                            <span id="interactive-attempt-counter" class="text-sm font-medium text-gray-500">Yükleniyor...</span>
+                        </div>
+                        <div id="interactive-attempt-dots" class="attempt-dots flex justify-end gap-1"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-description mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 id="interactive-step-title" class="font-semibold text-blue-800 mb-2 flex items-center gap-2">Yükleniyor...</h4>
+                <div class="text-blue-700 smart-content" id="interactive-step-desc"></div>
+            </div>
+            
+            <div class="options-section mb-6">
+                <h4 class="font-semibold text-gray-800 mb-4">Doğru çözüm adımını seçin:</h4>
+                <div class="options-grid space-y-3" id="interactive-options-container"></div>
+            </div>
+            
+            <div class="action-buttons flex flex-wrap gap-3 mb-4">
+                <button id="interactive-submit-btn" class="btn btn-primary flex-1" disabled>Seçimi Onayla</button>
+                <button id="interactive-hint-btn" class="btn btn-secondary">💡 İpucu</button>
+            </div>
+            <div id="interactive-result-container" class="result-section hidden mb-4"></div>
+        </div>
+    `;
+    return true;
+}
+// www/js/pages/index.js içine ekleyin veya mevcut olanı kontrol edin
+
+function enableInteractiveUI() {
+    const submitBtn = document.getElementById('interactive-submit-btn');
+    const optionLabels = document.querySelectorAll('.option-label');
+
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Seçimi Onayla';
+    }
+
+    optionLabels.forEach(label => {
+        label.style.pointerEvents = 'auto';
+        label.style.opacity = '1';
+    });
+}
+// www/js/pages/index.js -> Bu fonksiyonu eskisiyle tamamen değiştirin
+
+/**
+ * Mevcut adım verisine göre interaktif arayüzü günceller. (Yeniden çizmez)
+ */
+async function updateInteractiveWorkspace(stepData) {
+    // Statik elementleri ID'leri ile bul ve içeriklerini güncelle
+    document.getElementById('interactive-step-counter').textContent = `Adım ${stepData.stepNumber} / ${stepData.totalSteps}`;
+    document.getElementById('interactive-progress-percentage').textContent = `${Math.round((stepData.stepNumber / stepData.totalSteps) * 100)}% tamamlandı`;
+    document.getElementById('interactive-progress-fill').style.width = `${(stepData.stepNumber / stepData.totalSteps) * 100}%`;
+    document.getElementById('interactive-attempt-counter').textContent = `${stepData.remainingAttempts} / ${stepData.maxAttempts} kaldı`;
+    document.getElementById('interactive-attempt-dots').innerHTML = generateAttemptDots(stepData.attempts, stepData.maxAttempts);
+    
+    const stepTitle = document.getElementById('interactive-step-title');
+    stepTitle.innerHTML = `
+        <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">${stepData.stepNumber}</span>
+        Bu Adımda Yapılacak:
+    `;
+
+    // Matematiksel içerik barındıran kısımları güncelle ve render et
+    const stepDescEl = document.getElementById('interactive-step-desc');
+    stepDescEl.setAttribute('data-content', stepData.stepDescription);
+    
+    const optionsContainer = document.getElementById('interactive-options-container');
+    optionsContainer.innerHTML = generateInteractiveOptions(stepData.options);
+
+    // Sadece değişen kısımları render et
+    await globalRenderManager.renderElement(stepDescEl, stepData.stepDescription);
+    await globalRenderManager.renderContainer(optionsContainer);
+
+    // --- KRİTİK DÜZELTME BURADA ---
+    // Sonuç alanını temizle ve bir sonraki adıma hazırlık yap.
+    document.getElementById('interactive-result-container').innerHTML = '';
+    document.getElementById('interactive-result-container').classList.add('hidden');
+    
+    // Butonları ve seçenekleri tekrar tamamen aktif hale getir.
+    enableInteractiveUI();
+    
+    // Kullanıcının yeni bir seçim yapmasını beklemek için butonu tekrar pasifleştir.
+    // Metni doğru olduğu için artık kilitli görünmeyecek.
+    const submitBtn = document.getElementById('interactive-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+    }
+}
 
 async function renderInteractiveStepSafe(stepData) {
-    console.log('🔄 İnteraktif adım render başlıyor:', stepData);
+    console.log('🔄 İnteraktif adım render/update başlıyor:', stepData);
     try {
-        const solutionOutput = document.getElementById('solution-output');
-        if (!solutionOutput) throw new Error('solution-output container bulunamadı');
+        const workspace = document.querySelector('.interactive-solution-workspace');
 
-        // 1. ADIM: HTML'i oluştur ve DOM'a yerleştir.
-        solutionOutput.innerHTML = generateInteractiveHTML(stepData);
-        setupInteractiveEventListeners(stepData);
+        // Eğer arayüz iskeleti henüz DOM'da yoksa, önce onu oluştur.
+        if (!workspace) {
+            console.log("İnteraktif arayüz ilk kez oluşturuluyor.");
+            if (!buildInteractiveWorkspace()) {
+                throw new Error('İnteraktif arayüz iskeleti oluşturulamadı.');
+            }
+            // Olay dinleyicilerini sadece bir kez, iskelet oluşturulduğunda kur.
+            setupInteractiveEventListeners(stepData); 
+        }
 
-        // 2. ADIM: Render işleminden önce tarayıcının bir sonraki "nefes alma" anını bekle.
-        // BU SATIR KRİTİK ÖNEME SAHİP!
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        // Arayüzü yeni adım verileriyle doldur/güncelle.
+        await updateInteractiveWorkspace(stepData);
 
-        // 3. ADIM: Artık DOM'un hazır olduğundan emin bir şekilde render motorunu çalıştır.
-        await globalRenderManager.renderContainer(solutionOutput);
-
-        console.log('✅ İnteraktif adım render tamamlandı');
+        console.log('✅ İnteraktif adım başarıyla güncellendi.');
     } catch (error) {
-        console.error('❌ Adım render hatası:', error);
-        displayInteractiveError(`Render hatası: ${error.message}`);
+        console.error('❌ Adım render/update hatası:', error);
+        displayInteractiveError(`Arayüz güncellenirken bir hata oluştu: ${error.message}`);
     }
 }
 
@@ -1816,54 +1991,62 @@ function escapeHtml(text) {
 }
 
 
-// js/pages/index.js
+// www/js/pages/index.js -> Bu fonksiyonu eskisiyle değiştirin
 
 async function handleInteractiveSubmissionSafe() {
+    // 1. Gerekli DOM elementlerini bul.
+    const selectedRadio = document.querySelector('input[name="interactive-step-options"]:checked');
+    
+    // Seçim yapılmamışsa uyarı ver.
+    if (!selectedRadio) {
+        showError("Lütfen bir seçenek seçin.", false);
+        return;
+    }
+    
+    // 2. Arayüzü hemen pasifleştir.
+    disableInteractiveUI();
+    
     try {
-        const selectedRadio = document.querySelector('input[name="interactive-step-options"]:checked');
-        if (!selectedRadio) {
-            showError("Lütfen bir seçenek seçin.", false);
-            return;
-        }
-        
         const selectedOptionId = parseInt(selectedRadio.value);
-        disableInteractiveUI();
-        
         const result = interactiveSolutionManager.evaluateSelection(selectedOptionId);
         
         if (!result || result.error) {
             showError(result ? result.error : "Değerlendirme sırasında bilinmeyen bir hata oluştu", false);
-            enableInteractiveUI();
+            // Hata durumunda UI'yı tekrar aktif et.
+            enableInteractiveUI(); // <-- DÜZELTME 1: HATA DURUMU İÇİN EKLENDİ
             return;
         }
         
-        // Sonuç (Doğru/Yanlış) mesajını göster
+        // 3. Sonuç (Doğru/Yanlış) mesajını göster.
         await displayInteractiveResultSafe(result);
         
-        // Kullanıcının sonucu görmesi için 3 saniye bekle
+        // 4. Kullanıcının sonucu görmesi için 3 saniye bekle.
         setTimeout(async () => {
-            // =============================================================
-            // 🎯 DÜZELTME 3: Arayüzü doğrudan yeniden çiziyoruz.
-            // =============================================================
             if (interactiveSolutionManager.isCompleted) {
-                // Problem bittiyse tebrikler ekranını göster
                 await displayInteractiveCompletion(interactiveSolutionManager.getCompletionStats());
             } else if (interactiveSolutionManager.isFailed) {
-                // Deneme hakkı bittiyse başarısızlık ekranını göster
                 await displayInteractiveFailure();
             } else {
-                // Oturum devam ediyorsa, mevcut adıma göre (ki bu yanlış cevapta 0 olabilir) arayüzü yeniden çiz
                 const nextStepData = interactiveSolutionManager.generateStepOptions(interactiveSolutionManager.currentStep);
                 await renderInteractiveStepSafe(nextStepData);
+                // Yeni adım render edildikten sonra UI tekrar aktif hale gelecek,
+                // enableInteractiveUI() burada dolaylı olarak çalışmış oluyor.
             }
         }, 3000);
         
     } catch (error) {
         console.error('❌ Submission handler hatası:', error);
         showError("İşlem sırasında beklenmeyen bir hata oluştu", false);
+        // --- KRİTİK DÜZELTME 2: BEKLENMEDİK HATA DURUMU İÇİN ---
+        // Eğer yukarıdaki blokta beklenmedik bir hata olursa,
+        // UI'nın kilitli kalmaması için butonu burada da aktif et.
         enableInteractiveUI();
     }
+    // NOT: `finally` bloğunu burada kullanmıyoruz çünkü 3 saniyelik bekleme süresi
+    // senkronizasyonu bozabilir. Bunun yerine her hata yolunda `enableInteractiveUI` çağrısı
+    // yapmak daha güvenlidir.
 }
+
 async function handleInteractiveForceReset(message) {
     console.log('🔄 ZORUNLU RESET BAŞLATILIYOR...', message);
     
@@ -2041,22 +2224,7 @@ function disableInteractiveUI() {
     });
 }
 
-// UI'yi tekrar aktif et
-function enableInteractiveUI() {
-    const submitBtn = document.getElementById('interactive-submit-btn');
-    const optionLabels = document.querySelectorAll('.option-label');
 
-    if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Seçimi Onayla';
-    }
-
-    optionLabels.forEach(label => {
-        label.style.pointerEvents = 'auto';
-        label.style.opacity = '1';
-    });
-}
-// index.js
 
 async function displayInteractiveResultSafe(result) {
     const resultContainer = document.getElementById('interactive-result-container');
@@ -2844,10 +3012,17 @@ async function handleMentorSubmission() {
         }
     }
 }
-// www/js/pages/index.js -> Okunabilirlik için metin boyutu küçültüldü.
+const MAX_CHAT_HISTORY = 100; // Sohbet geçmişi için maksimum mesaj sayısı
+
 function addMentorMessage(content, sender = 'ai', type = 'info', animate = true) {
     if (animate) {
         smartGuide.chatHistory.push({ content, sender, type });
+
+        // --- BELLEK SIZINTISI ÖNLEMİ ---
+        // Eğer sohbet geçmişi limiti aştıysa, en eski mesajı sil.
+        if (smartGuide.chatHistory.length > MAX_CHAT_HISTORY) {
+            smartGuide.chatHistory.shift(); // Dizinin başındaki (en eski) elemanı kaldırır.
+        }
     }
 
     const chatFeed = document.getElementById('chat-feed');

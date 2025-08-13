@@ -158,45 +158,47 @@ body {
 /* === 4. MATEMATİK RENDER (KaTeX & MathJax) STİLLERİ              === */
 /* =================================================================== */
 
-/* Render motoru tarafından oluşturulan ana container */
-.katex {
-    font-size: 1em !important; /* Çevreleyen metnin boyutunu miras al */
-    line-height: 1.6 !important;
-    color: #1f2937 !important; /* Koyu metin rengi */
-    text-align: left !important;
+#solution-output .katex, #question .katex, .option-text .katex {
+    font-size: 1em;
+    line-height: 1.6;
+    color: #1f2937;
+    text-align: left;
 }
 
 /* Satır içi matematik ifadeleri için stil ($...$) */
-.katex:not(.katex-display) {
-    display: inline-block !important;
-    vertical-align: -0.1em; /* Metinle daha iyi hizalama */
-    margin: 0 3px !important;
-    padding: 2px 5px !important;
-    background: rgba(79, 70, 229, 0.07) !important; /* Hafif indigo arka plan */
-    border-radius: 4px !important;
-    border: 1px solid rgba(79, 70, 229, 0.1) !important;
-    transition: all 0.2s ease !important;
+#solution-output .katex:not(.katex-display), 
+#question .katex:not(.katex-display),
+.option-text .katex:not(.katex-display) {
+    display: inline-block;
+    vertical-align: -0.1em;
+    margin: 0 3px;
+    padding: 2px 5px;
+    background: rgba(79, 70, 229, 0.07);
+    border-radius: 4px;
+    border: 1px solid rgba(79, 70, 229, 0.1);
+    transition: all 0.2s ease;
 }
 
-.katex:not(.katex-display):hover {
-    background: rgba(79, 70, 229, 0.1) !important;
-    border-color: rgba(79, 70, 229, 0.2) !important;
+#solution-output .katex:not(.katex-display):hover,
+#question .katex:not(.katex-display):hover,
+.option-text .katex:not(.katex-display):hover {
+    background: rgba(79, 70, 229, 0.1);
+    border-color: rgba(79, 70, 229, 0.2);
 }
 
 /* Blok (display) matematik ifadeleri için stil ($$...$$) */
-.katex-display {
-    display: block !important;
-    text-align: center !important;
-    margin: 1rem auto !important;
-    padding: 1rem !important;
-    background-color: #f8fafc !important; /* slate-50 */
-    border-radius: 0.5rem !important;
-    border: 1px solid #e2e8f0 !important; /* slate-200 */
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+#solution-output .katex-display, #question .katex-display {
+    display: block;
+    text-align: center;
+    margin: 1rem auto;
+    padding: 1rem;
+    background-color: #f8fafc;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     max-width: 100%;
-    overflow-x: auto; /* Uzun ifadeler için kaydırma çubuğu */
+    overflow-x: auto;
 }
-
 /* Render hatası durumunda gösterilecek stil */
 .katex-error {
     color: #dc2626 !important;
@@ -665,3 +667,52 @@ textarea[readonly] {
       background-color: #f3f4f6; /* Soluk gri bir arka plan */
       cursor: not-allowed;      /* Üzerine gelince "yasak" imlecini göster */
     }
+
+/* www/css/style.css -> Dosyanın sonuna ekleyin */
+
+/* =================================================================== */
+/* === 12. MOBİL TAŞMA SORUNU DÜZELTMELERİ                        === */
+/* =================================================================== */
+
+/* İnteraktif seçeneklerin içindeki esnek content alanı */
+.option-content {
+    /* Bu elemanın, içindeki içerik çok geniş olsa bile küçülebilmesini sağlar. */
+    min-width: 0; 
+}
+
+/* Render edilen matematiksel ifadenin kendisi */
+.option-text.smart-content {
+    /* Eğer ifade hala taşıyorsa, yatay kaydırma çubuğu göster. */
+    overflow-x: auto;
+    /* Kaydırma çubuğunun daha iyi görünmesi için küçük bir dolgu */
+    padding-bottom: 4px;
+    /* Webkit tabanlı tarayıcılar için (Chrome, Safari) ince kaydırma çubuğu */
+    scrollbar-width: thin;
+    scrollbar-color: #a5b4fc #e0e7ff;
+}
+
+.option-text.smart-content::-webkit-scrollbar {
+    height: 6px;
+}
+
+.option-text.smart-content::-webkit-scrollbar-thumb {
+    background-color: #a5b4fc; /* indigo-300 */
+    border-radius: 3px;
+}    
+
+
+/* style.css dosyasının sonuna ekleyin */
+
+/* İşlem sırasında pasif hale getirilen butonlar için genel stil */
+.disabled-btn {
+    opacity: 0.5; /* Butonu soluklaştır */
+    cursor: not-allowed; /* "İzin verilmiyor" imlecini göster */
+    pointer-events: none; /* Tıklama olaylarını tamamen engelle */
+    transition: opacity 0.3s ease;
+}
+
+/* Pasif durumdaki bir butona hover olunduğunda hiçbir şey olmasın */
+.disabled-btn:hover {
+    transform: none;
+    box-shadow: none;
+}

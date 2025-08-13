@@ -336,8 +336,9 @@ export class OptimizedCanvasManager {
         this.applyDrawingSettings(canvasId);
     }
 
+
     /**
-     * Canvas'ı temizler.
+     * Canvas'ı temizler ve geçmişini sıfırlar.
      * @param {string} canvasId - Temizlenecek canvas'ın ID'si.
      * @param {boolean} saveState - Temizleme sonrası boş durumu geçmişe kaydetmek için.
      */
@@ -347,17 +348,27 @@ export class OptimizedCanvasManager {
 
         const { canvas, ctx } = data;
         
-        // Canvas'ı tamamen temizle
+        // 1. Canvas'ı tamamen temizle
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Beyaz arka plan ekle
+        // 2. Beyaz arka plan ekle
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Çizim ayarlarını yeniden uygula
+        // 3. Çizim ayarlarını yeniden uygula
         this.applyDrawingSettings(canvasId);
 
-        if (saveState) this.saveCanvasState(canvasId);
+        // --- EN ÖNEMLİ DÜZELTME BURADA ---
+        // 4. Tuvalin hafızasını (çizim geçmişini) de sıfırla.
+        // Bu, yeniden boyutlandırmanın eski çizimi geri getirmesini engeller.
+        data.history = [];
+        console.log(`✅ Canvas history for '${canvasId}' has been cleared.`);
+        // --- DÜZELTME SONU ---
+
+        if (saveState) {
+            // İsteğe bağlı olarak, bu temiz durumu yeni başlangıç olarak kaydet.
+            this.saveCanvasState(canvasId);
+        }
     }
 
     /**
@@ -413,6 +424,8 @@ export class OptimizedCanvasManager {
         }
     }
 
+    // www/js/modules/canvasManager.js içine, toDataURL fonksiyonunun altına ekleyin
+
     /**
      * Belirtilen canvas'a ait tüm yöneticileri (observer vb.) temizler.
      * @param {string} canvasId - Temizlenecek canvas'ın ID'si.
@@ -420,14 +433,18 @@ export class OptimizedCanvasManager {
     cleanup(canvasId) {
         const observer = this.observers.get(canvasId);
         if (observer) {
+            // Gözlemciyi durdur ve haritadan sil.
             observer.disconnect();
             this.observers.delete(canvasId);
+            console.log(`✅ ResizeObserver for '${canvasId}' disconnected.`);
         }
         
         const data = this.canvasPool.get(canvasId);
         if (data) {
+            // Zamanlayıcıları temizle ve canvas'ı havuzdan kaldır.
             clearTimeout(data.saveTimeout);
             this.canvasPool.delete(canvasId);
+            console.log(`✅ Canvas data for '${canvasId}' cleaned up.`);
         }
         
         this.pendingUpdates.delete(canvasId);

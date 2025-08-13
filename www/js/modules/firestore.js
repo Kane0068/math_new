@@ -1,8 +1,7 @@
-// www/js/modules/firestore.js
-
-// auth.js'de başlatılan auth ve db nesnelerini import ediyoruz.
-import { auth, db } from './auth.js'; 
+import { auth, db } from './firebase.js'; 
 import { doc, getDoc, setDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+
 // Tüm Firestore veritabanı işlemlerini yöneten merkezi nesne.
 export const FirestoreManager = {
     /**
@@ -106,39 +105,7 @@ export const FirestoreManager = {
         return newCount;
     },
 
-    // www/js/modules/firestore.js İÇİNE, incrementQueryCount'un ALTINA EKLEYİN
-
-    /**
-     * [GEÇİCİ] Kullanıcının günlük sorgu hakkını istemci tarafından 1 azaltır.
-     * @returns {boolean} İşlemin başarılı olup olmadığını döndürür.
-     */
-    async decrementQueryCountClientSide() {
-        const user = auth.currentUser;
-        if (!user) {
-            console.error("decrementQueryCount: Kullanıcı giriş yapmamış.");
-            return false;
-        }
-
-        const userRef = doc(db, "users", user.uid);
-        const docSnap = await getDoc(userRef);
-
-        if (!docSnap.exists()) {
-            console.error("decrementQueryCount: Kullanıcı verisi bulunamadı.");
-            return false;
-        }
-
-        const currentCount = docSnap.data().dailyQueryCount || 0;
-        if (currentCount <= 0) {
-            console.log("decrementQueryCount: Kullanıcının zaten hakkı yok.");
-            return false; // Zaten hakkı yoksa azaltma
-        }
-
-        const newCount = currentCount - 1;
-        await updateDoc(userRef, { dailyQueryCount: newCount });
-        console.log(`Firestore: Günlük sorgu hakkı ${newCount}'a düşürüldü.`);
-        return true;
-    },
-
+  
      async updateUserSubscription(tier, expiresDate) {
         const user = auth.currentUser;
         if (!user) throw new Error("Abonelik güncellemek için kullanıcı giriş yapmalı.");

@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>MathAi - Gelişmiş Çözüm Asistanı</title>
-    
+    <script src="config.js"></script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap&subset=latin-ext" rel="stylesheet">
@@ -40,323 +41,26 @@
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 
     <style>
-        * {
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        }
-
-        /* Mobile optimizations */
-        @media (max-width: 768px) {
-            .container {
-                padding: 4px !important;
-                margin: 0 !important;
-                max-width: 100% !important;
-            }
-            
-            .rounded-3xl {
-                border-radius: 12px !important;
-            }
-            
-            .rounded-2xl {
-                border-radius: 10px !important;
-            }
-            
-            .rounded-xl {
-                border-radius: 8px !important;
-            }
-            
-            .p-8 {
-                padding: 12px !important;
-            }
-            
-            .p-6 {
-                padding: 10px !important;
-            }
-            
-            .p-4 {
-                padding: 8px !important;
-            }
-            
-            .text-6xl {
-                font-size: 2.5rem !important;
-            }
-            
-            .text-4xl {
-                font-size: 1.75rem !important;
-            }
-            
-            .text-3xl {
-                font-size: 1.25rem !important;
-            }
-            
-            .text-2xl {
-                font-size: 1.125rem !important;
-            }
-            
-            .text-xl {
-                font-size: 1rem !important;
-            }
-            
-            .text-lg {
-                font-size: 0.875rem !important;
-            }
-            
-            .h-64 {
-                height: 180px !important;
-            }
-            
-            .h-48 {
-                height: 140px !important;
-            }
-            
-            .h-40 {
-                height: 160px !important;
-            }
-            
-            .h-24 {
-                height: 80px !important;
-            }
-            
-            .py-6 {
-                padding-top: 12px !important;
-                padding-bottom: 12px !important;
-            }
-            
-            .py-4 {
-                padding-top: 10px !important;
-                padding-bottom: 10px !important;
-            }
-            
-            .py-3 {
-                padding-top: 8px !important;
-                padding-bottom: 8px !important;
-            }
-            
-            .space-x-4 > * + * {
-                margin-left: 6px !important;
-            }
-            
-            .space-x-3 > * + * {
-                margin-left: 4px !important;
-            }
-            
-            .space-y-6 > * + * {
-                margin-top: 12px !important;
-            }
-            
-            .space-y-4 > * + * {
-                margin-top: 10px !important;
-            }
-            
-            .gap-6 {
-                gap: 8px !important;
-            }
-            
-            .gap-4 {
-                gap: 6px !important;
-            }
-            
-            .gap-3 {
-                gap: 4px !important;
-            }
-            
-            .grid-cols-2 {
-                grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
-            }
-            
-            .grid-cols-4 {
-                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            }
-            
-            .mb-8 {
-                margin-bottom: 12px !important;
-            }
-            
-            .mb-6 {
-                margin-bottom: 10px !important;
-            }
-            
-            .mb-4 {
-                margin-bottom: 8px !important;
-            }
-            
-            .mt-8 {
-                margin-top: 12px !important;
-            }
-            
-            .mt-6 {
-                margin-top: 10px !important;
-            }
-            
-            .mt-4 {
-                margin-top: 8px !important;
-            }
-        }
-
-        .render-pending {
-            position: relative;
-            min-height: 1.5em;
-        }
-        
-        .render-pending::after {
-            content: "⏳";
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 1.2em;
-            animation: pulse 1s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-8px); }
-        }
-
-        @keyframes glow {
-            0%, 100% { box-shadow: 0 0 15px rgba(139, 92, 246, 0.3); }
-            50% { box-shadow: 0 0 25px rgba(139, 92, 246, 0.6); }
-        }
-
-        .floating-element {
-            animation: float 3s ease-in-out infinite;
-        }
-
-        .glow-effect {
-            animation: glow 2s ease-in-out infinite alternate;
-        }
-
-        .glass-effect {
-            background: rgba(255, 255, 255, 0.25);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .neo-shadow {
-            box-shadow: 
-                6px 6px 12px rgba(0, 0, 0, 0.1),
-                -6px -6px 12px rgba(255, 255, 255, 0.8),
-                inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-        }
-
-        .btn {
-            @apply px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 active:scale-95;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            @apply text-white shadow-lg hover:shadow-xl;
-        }
-
-        .btn-secondary {
-            @apply bg-gray-200 text-gray-700 hover:bg-gray-300 shadow-md hover:shadow-lg;
-        }
-
-        .btn-tertiary {
-            @apply bg-white text-gray-600 border-2 border-gray-200 hover:border-indigo-300 hover:text-indigo-600 shadow-sm hover:shadow-md;
-        }
-
-        .tool-btn {
-            @apply transition-all duration-200 hover:bg-indigo-100 hover:text-indigo-600 active:scale-95;
-        }
-
-        .tool-btn.active {
-            @apply bg-indigo-500 text-white shadow-md;
-        }
-
-        .mode-tab {
-            @apply transition-all duration-300 text-gray-600 hover:text-indigo-600;
-        }
-
-        .mode-tab.active {
-            @apply bg-white text-indigo-600 shadow-lg transform scale-105;
-        }
-
-        .disabled-area {
-        pointer-events: none; /* Tıklama olaylarını tamamen engeller */
-        opacity: 0.6;         /* Alanı görsel olarak soluklaştırır */
-        transition: opacity 0.3s ease;
-        }
-        .disabled-area .canvas-container {
-        pointer-events: none;
-        position: relative; /* Aşağıdaki overlay için gereklidir */
+        /* Sadece bu sayfaya özgü birkaç animasyon ve yardımcı sınıf burada kalabilir */
+    .render-pending {
+        position: relative;
+        min-height: 1.5em;
     }
-
-        /* KULLANICI DENEYİMİ İÇİN ÖNERİ:
-        Canvas pasifken üzerine soluk bir katman ekleyerek
-        kullanılamaz olduğunu görsel olarak daha net belli edelim. */
-        .disabled-area .canvas-container::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(249, 250, 251, 0.6); /* Arka plan rengine uygun yarı saydam bir renk */
-            z-index: 10; /* Canvas'ın üzerinde kalmasını sağlar */
-            border-radius: 0.5rem; /* Kenar yuvarlaklığı */
-        }
-
-
-        .feature-card {
-            @apply transform transition-all duration-300 hover:scale-105 hover:shadow-xl;
-        }
-
-        .feature-card:hover {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
-        }
-
-        /* Workspace message input styles */
-        .workspace-message-input {
-            background-color: #f9fafb;
-            color: #111827;
-            border: 2px solid #e5e7eb;
-            transition: all 0.3s ease;
-        }
-
-        .workspace-message-input:focus {
-            border-color: #8b5cf6;
-            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
-        }
-        
-        /* Mobile specific styles */
-        @media (max-width: 640px) {
-            body {
-                margin: 0;
-                padding: 0;
-            }
-            
-            .container {
-                padding: 2px !important;
-            }
-            
-            .text-6xl { font-size: 1.75rem !important; }
-            .text-5xl { font-size: 1.5rem !important; }
-            .text-4xl { font-size: 1.25rem !important; }
-            .text-3xl { font-size: 1.125rem !important; }
-            .text-2xl { font-size: 1rem !important; }
-            .text-xl { font-size: 0.9rem !important; }
-            .text-lg { font-size: 0.8rem !important; }
-            .p-8 { padding: 8px !important; }
-            .p-6 { padding: 6px !important; }
-            .p-4 { padding: 4px !important; }
-            .mb-8 { margin-bottom: 8px !important; }
-            .mb-6 { margin-bottom: 6px !important; }
-            .mb-4 { margin-bottom: 4px !important; }
-            .space-y-6 > * + * { margin-top: 8px !important; }
-            .space-y-4 > * + * { margin-top: 6px !important; }
-            .gap-6 { gap: 4px !important; }
-            .gap-4 { gap: 3px !important; }
-            .gap-3 { gap: 2px !important; }
-            .h-64 { height: 160px !important; }
-            .h-48 { height: 120px !important; }
-            .h-32 { height: 90px !important; }
-            .h-24 { height: 70px !important; }
-        }
+    
+    .render-pending::after {
+        content: "⏳";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.2em;
+        animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+    }
 
         
     </style>
