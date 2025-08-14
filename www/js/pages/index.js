@@ -47,7 +47,7 @@ window.addEventListener('load', () => {
 async function initializeApp(userData) {
     if (userData) {
         showLoading("Matematik render sistemi başlatılıyor...");
-        const renderReady = await initializeRenderSystem();
+        const renderReady = await initializeRenderSystem(); // 👈 Bu zaten var!
         
         if (!renderReady) {
             showError("Render sistemi başlatılamadı. Sayfayı yenileyin.", true, () => location.reload());
@@ -464,35 +464,69 @@ async function preRenderSolutionViews(solution) {
 
     console.log('🚀 Performans Optimizasyonu: Arka planda render işlemleri başlatılıyor...');
 
-    // Eğer zaten cache'de varsa, tekrar render etme.
     if (preRenderedCache.has('fullSolution') && preRenderedCache.has('interactive')) {
         console.log('✅ Görünümler zaten önceden render edilmiş. Atlanıyor.');
         return;
     }
 
-    // 1. "Tüm Çözüm" görünümünü arka planda render et.
+    // --- "Tüm Çözüm" Ön Yüklemesi ---
     const fullSolutionPromise = (async () => {
-        const container = document.createElement('div'); // Gerçek DOM yerine hafızada bir element oluştur.
-        container.innerHTML = generateSolutionHTML(solution); // HTML'i oluştur.
-        await globalRenderManager.renderContainer(container); // İçeriği render et.
-        preRenderedCache.set('fullSolution', container.innerHTML); // Sonucu cache'e kaydet.
-        console.log('✅ Arka Plan: "Tüm Çözüm" render edildi ve cache\'lendi.');
+        if (preRenderedCache.has('fullSolution')) return;
+
+        // 1. Geçici bir container oluştur.
+        const container = document.createElement('div');
+        container.innerHTML = generateSolutionHTML(solution);
+
+        // 2. GÖRÜNMEZ HALE GETİR ve DOM'A EKLE (KRİTİK ADIM)
+        container.style.position = 'absolute';
+        container.style.top = '-9999px';
+        container.style.left = '0px';
+        container.style.visibility = 'hidden'; // Önce gizle, renderContainer içinde görünür olacak
+        document.body.appendChild(container);
+
+        try {
+            // 3. RENDER ET (Artık DOM'da olduğu için ölçüm yapabilir)
+            await globalRenderManager.renderContainer(container);
+            preRenderedCache.set('fullSolution', container.innerHTML);
+            console.log('✅ Arka Plan: "Tüm Çözüm" render edildi ve cache\'lendi.');
+        } catch (error) {
+            console.error('❌ "Tüm Çözüm" ön yüklemesi başarısız:', error);
+        } finally {
+            // 4. GARANTİLİ TEMİZLİK: İşlem bitince elementi DOM'dan kaldır.
+            document.body.removeChild(container);
+        }
     })();
 
-    // 2. "İnteraktif Çözüm" görünümünü arka planda render et.
+    // --- "İnteraktif Çözüm" Ön Yüklemesi (Aynı mantık) ---
     const interactivePromise = (async () => {
-        // İnteraktif çözüm için sadece ilk adımı hazırlamak yeterli.
+        if (preRenderedCache.has('interactive')) return;
+
         interactiveSolutionManager.initializeInteractiveSolution(solution);
         const firstStepData = interactiveSolutionManager.generateStepOptions(0);
         
         const container = document.createElement('div');
         container.innerHTML = generateInteractiveHTML(firstStepData);
-        await globalRenderManager.renderContainer(container);
-        preRenderedCache.set('interactive', container.innerHTML);
-        console.log('✅ Arka Plan: "İnteraktif Çözüm" render edildi ve cache\'lendi.');
+
+        // DOM'a ekle
+        container.style.position = 'absolute';
+        container.style.top = '-9999px';
+        container.style.left = '0px';
+        container.style.visibility = 'hidden';
+        document.body.appendChild(container);
+
+        try {
+            // Render et
+            await globalRenderManager.renderContainer(container);
+            preRenderedCache.set('interactive', container.innerHTML);
+            console.log('✅ Arka Plan: "İnteraktif Çözüm" render edildi ve cache\'lendi.');
+        } catch(error) {
+            console.error('❌ "İnteraktif Çözüm" ön yüklemesi başarısız:', error);
+        } finally {
+            // Temizle
+            document.body.removeChild(container);
+        }
     })();
 
-    // Her iki işlemi paralel olarak çalıştır ama hataların ana akışı durdurmasını engelle.
     await Promise.allSettled([fullSolutionPromise, interactivePromise]);
 }
 // www/js/pages/index.js -> updateUserDashboard için NİHAİ ve EKSİKSİZ VERSİYON
@@ -632,6 +666,7 @@ async function renderApp(state) {
     }
     // --- GÖRÜNÜRLÜK MANTIĞI SONU ---
 
+    await new Promise(resolve => requestAnimationFrame(resolve)); 
 
     // 3. Mevcut Görünüme Göre İçerikleri Çiz
     try {
@@ -641,7 +676,9 @@ async function renderApp(state) {
             stateManager.setView('setup');
             return;
         }
-
+        if (elements['solution-output']) {
+            elements['solution-output'].innerHTML = '';
+        }
         switch (view) {
             case 'setup':
                 await renderSetupView(ui.inputMode, ui.handwritingInputType);
@@ -653,8 +690,9 @@ async function renderApp(state) {
                 break;
 
             case 'fullSolution':
-                // Sadece tam çözümü render etmeye odaklan
+                // Önce sorunun özetini göster (isteğe bağlı ama iyi bir pratik)
                 await displayQuestionSummary(problem.solution.problemOzeti);
+                // Yeni ve sadeleştirilmiş fonksiyonumuzu çağır.
                 await renderFullSolution(problem.solution);
                 break;
 
@@ -933,6 +971,8 @@ async function handleNewProblem() {
         if (updatedUserData) stateManager.setUser(updatedUserData);
 
         // Artık bekleme (await) gerekmiyor, çünkü Promise.all bunu zaten yaptı.
+        globalRenderManager.setSolutionMetadata(unifiedSolution);
+
         stateManager.setSolution(unifiedSolution);
         stateManager.setView('summary');
         showSuccess(`Soru başarıyla analiz edildi!`, true, 4000);
@@ -1179,7 +1219,8 @@ async function displayQuestionSummary(problemOzeti) {
 
 
 
-// HTML oluşturma fonksiyonu - Full Solution için
+
+// ESKİ generateSolutionHTML FONKSİYONUNUZU SİLİP BUNU YAPIŞTIRIN
 function generateSolutionHTML(solution) {
     if (!solution) {
         return '<div class="p-4 bg-red-50 text-red-700 rounded-lg">Çözüm verisi bulunamadı.</div>';
@@ -1193,172 +1234,94 @@ function generateSolutionHTML(solution) {
 
     if (solution.adimlar && solution.adimlar.length > 0) {
         solution.adimlar.forEach((step, index) => {
+            // --- NİHAİ ÇÖZÜM BURADA ---
+            // Adım açıklamasını oluşturan dizi, boşluklarla birleştirilerek tek bir metin haline getiriliyor.
+            const combinedDescription = Array.isArray(step.adimAciklamasi) 
+                ? step.adimAciklamasi.join(' ') 
+                : step.adimAciklamasi;
+
+            const combinedHint = Array.isArray(step.ipucu)
+                ? step.ipucu.join(' ')
+                : step.ipucu;
+
             html += `
-                <div class="solution-step p-4 mb-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+                <div class="solution-step p-4 mb-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div class="step-header flex items-center gap-3 mb-3">
                         <div class="step-number w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
                             ${index + 1}
                         </div>
-                        <h4 class="font-semibold text-gray-800">Adım ${index + 1}</h4>
+                        <h4 class="font-semibold text-gray-800">Adım ${index + 1}: ${escapeHtml(step.adimBasligi || '')}</h4>
                     </div>
                     
-                    <div class="step-content space-y-3">
-                        <!-- Adım açıklaması -->
-                        <div class="step-description text-gray-700 smart-content" 
-                             data-content="${escapeHtml(step.adimAciklamasi || `${index + 1}. adım açıklaması`)}" 
-                             id="step-desc-${index}">
-                            ${escapeHtml(step.adimAciklamasi || 'Yükleniyor...')}
+                    <div class="smart-content text-sm" data-content="${escapeHtml(combinedDescription || '')}"></div>
+                    
+                    ${step.ipucu ? `
+                        <div class="step-hint p-3 bg-yellow-50 rounded-lg border border-yellow-200 mt-3">
+                            <div class="flex items-start gap-2">
+                                <span class="text-yellow-600">💡</span>
+                                <div class="smart-content step-hint-content flex-1 text-sm text-yellow-800" data-content="${escapeHtml(combinedHint || '')}"></div>
+                            </div>
                         </div>
-                        
-                        <!-- LaTeX çözüm -->
-                        ${step.cozum_lateks ? `
-                            <div class="math-container">
-                                <div class="latex-content p-3 bg-white rounded border border-gray-200" 
-                                    data-latex="${escapeHtml(step.cozum_lateks)}" 
-                                    id="step-latex-${index}">
-                                    <div class="text-center text-gray-400">
-                                        <span class="loader inline-block w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></span>
-                                        Matematik ifadesi yükleniyor...
-                                    </div>
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        <!-- İpucu -->
-                        ${step.ipucu ? `
-                            <div class="step-hint p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                                <div class="flex items-start gap-2">
-                                    <span class="text-yellow-600">💡</span>
-                                    <div class="step-hint-content smart-content flex-1 text-sm text-yellow-800" 
-                                         data-content="${escapeHtml(step.ipucu)}" 
-                                         id="step-hint-${index}">
-                                        ${escapeHtml(step.ipucu)}
-                                    </div>
-                                </div>
-                            </div>
-                        ` : ''}
-                    </div>
+                    ` : ''}
                 </div>
             `;
         });
-    } else if (solution.tamCozumLateks && solution.tamCozumLateks.length > 0) {
-        // Eski format desteği
-        solution.tamCozumLateks.forEach((latex, index) => {
-            html += `
-                <div class="solution-step p-4 mb-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div class="step-number font-semibold text-blue-600 mb-2">Adım ${index + 1}</div>
-                    <div class="latex-content p-3 bg-white rounded" 
-                         data-latex="${escapeHtml(latex)}" 
-                         id="legacy-step-${index}">
-                        <div class="text-center text-gray-400">Yükleniyor...</div>
-                    </div>
-                </div>
-            `;
-        });
-    } else {
-        html += `
-            <div class="p-6 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-300">
-                <p class="font-semibold mb-2">⚠️ Çözüm Adımları Bulunamadı</p>
-                <p class="text-sm">Lütfen "Çözüme Başla" butonuna tıklayarak çözüm adımlarını yükleyin.</p>
-            </div>
-        `;
     }
 
     html += '</div>';
     return html;
 }
 
-async function renderFullSolution(solution) {
-    const container = elements['solution-output'];
-    if (!container) return;
+// www/js/pages/index.js -> ESKİ renderFullSolution ve yardımcılarını SİLİP, BUNU EKLEYİN.
 
-    // Cache'i kontrol et. Eğer önceden render edilmiş HTML varsa, onu anında kullan!
-    if (preRenderedCache.has('fullSolution')) {
-        console.log('⚡️ "Tüm Çözüm" cache\'den yüklendi!');
-        container.innerHTML = preRenderedCache.get('fullSolution');
-        setupFullSolutionEventListeners(); // Event listener'ları yine de bağlamamız gerekiyor.
+async function renderFullSolution(solution) {
+    // 1. Gerekli elementleri bul.
+    const resultContainer = document.getElementById('result-container');
+    const solutionOutput = document.getElementById('solution-output');
+    
+    if (!solutionOutput || !resultContainer || !solution) {
+        console.error("❌ renderFullSolution: Gerekli konteynerler veya çözüm verisi bulunamadı.");
         return;
     }
 
-    // Eğer cache'de yoksa, normal render sürecini çalıştır.
-    console.log('⏳ "Tüm Çözüm" normal şekilde render ediliyor (cache boş)...');
-    container.innerHTML = generateSolutionHTML(solution);
-    setupFullSolutionEventListeners();
-    await globalRenderManager.renderContainer(container);
-}
+    // 2. Konteynerlerin görünürlüğünü GARANTİLE.
+    // renderApp'e ek olarak burada da kontrol etmek, fonksiyonu daha sağlam yapar.
+    resultContainer.classList.remove('hidden');
+    solutionOutput.classList.remove('hidden');
+    console.log('✅ Çözüm konteynerleri görünür yapıldı.');
 
-// Progressive render fonksiyonu
-async function renderSolutionProgressive(container, solution) {
-    if (!container) return;
-
-    // İlk 3 adımı hemen render et
-    const visibleSteps = container.querySelectorAll('.solution-step:nth-child(-n+3)');
-    
-    for (const stepElement of visibleSteps) {
-        await renderStepContent(stepElement);
-        // Her adım arası kısa bekleme
-        await new Promise(resolve => setTimeout(resolve, 50));
+    // 3. Cache kontrolü yap ve HTML'i oluştur.
+    const cacheKey = 'fullSolution';
+    if (preRenderedCache.has(cacheKey)) {
+        console.log('⚡️ "Tüm Çözüm" cache\'den yüklendi!');
+        solutionOutput.innerHTML = preRenderedCache.get(cacheKey);
+    } else {
+        console.log('⏳ "Tüm Çözüm" normal şekilde render ediliyor (cache boş)...');
+        // HTML iskeletini oluştur ve konteynerin içine yerleştir.
+        solutionOutput.innerHTML = generateSolutionHTML(solution);
     }
-
-    // Geri kalan adımları lazy load et
-    const remainingSteps = container.querySelectorAll('.solution-step:nth-child(n+4)');
     
-    if (remainingSteps.length > 0) {
-        // Intersection Observer ile görünür olduklarında render et
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    renderStepContent(entry.target);
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, { 
-            rootMargin: '100px',
-            threshold: 0.1 
-        });
+    // 4. DOM'un güncellenmesi için kısa bir bekleme yap (çok önemli).
+    await new Promise(resolve => requestAnimationFrame(resolve));
 
-        remainingSteps.forEach(step => observer.observe(step));
-    }
-}
-
-// Tek bir adımın içeriğini render et
-async function renderStepContent(stepElement) {
-    if (!stepElement || stepElement.dataset.rendered === 'true') return;
-
+    // 5. İçeriği render etmesi için globalRenderManager'ı çağır.
     try {
-        // Açıklama render
-        const descElement = stepElement.querySelector('.step-description');
-        if (descElement && descElement.dataset.content) {
-            await renderMath(descElement.dataset.content, descElement, false);
-        }
-
-        // LaTeX render
-        const latexElement = stepElement.querySelector('.latex-content');
-        if (latexElement && latexElement.dataset.latex) {
-            await renderMath(latexElement.dataset.latex, latexElement, true);
-        }
-
-        // İpucu render
-        const hintElement = stepElement.querySelector('.step-hint-content');
-        if (hintElement && hintElement.dataset.content) {
-            await renderMath(hintElement.dataset.content, hintElement, false);
-        }
-
-        // Rendered olarak işaretle
-        stepElement.dataset.rendered = 'true';
-        
-        // Başarılı render animasyonu
-        stepElement.classList.add('opacity-0');
-        setTimeout(() => {
-            stepElement.classList.remove('opacity-0');
-            stepElement.classList.add('opacity-100', 'transition-opacity', 'duration-300');
-        }, 50);
-
+        await globalRenderManager.renderContainer(solutionOutput, {
+            onProgress: (completed, total) => {
+                console.log(`📊 Tam Çözüm Render: ${completed}/${total} (%${Math.round((completed / total) * 100)})`);
+            }
+        });
+        console.log('✅ Tam çözüm başarıyla render edildi.');
     } catch (error) {
-        console.error('Step render error:', error);
-        stepElement.classList.add('render-error', 'border-red-300', 'bg-red-50');
+        console.error('❌ Tam çözüm render edilirken hata oluştu:', error);
+        showError('Çözüm adımları gösterilirken bir hata oluştu.');
     }
+
+    // 6. Gerekli olay dinleyicilerini (event listener) kur.
+    setupFullSolutionEventListeners();
 }
+
+
 
 function setupFullSolutionEventListeners() {
     const backToMainBtn = document.getElementById('back-to-main-menu-btn');
@@ -1572,6 +1535,7 @@ async function updateInteractiveWorkspace(stepData) {
     // Sadece değişen kısımları render et
     await globalRenderManager.renderElement(stepDescEl, stepData.stepDescription);
     await globalRenderManager.renderContainer(optionsContainer);
+    await new Promise(resolve => requestAnimationFrame(resolve));
 
     // --- KRİTİK DÜZELTME BURADA ---
     // Sonuç alanını temizle ve bir sonraki adıma hazırlık yap.
@@ -1614,107 +1578,36 @@ async function renderInteractiveStepSafe(stepData) {
     }
 }
 
+// ESKİ generateInteractiveHTML FONKSİYONUNUZU SİLİP BUNU YAPIŞTIRIN
 function generateInteractiveHTML(stepData) {
     if (!stepData || !stepData.options) {
         console.error('❌ generateInteractiveHTML: stepData eksik');
         return '<div class="p-4 text-red-600">Adım verisi eksik</div>';
     }
 
+    // --- NİHAİ ÇÖZÜM BURADA ---
+    const combinedDescription = Array.isArray(stepData.stepDescription)
+        ? stepData.stepDescription.join(' ')
+        : stepData.stepDescription;
+
     const progress = (stepData.stepNumber / stepData.totalSteps) * 100;
 
     return `
         <div class="interactive-solution-workspace p-6 bg-white rounded-lg shadow-md">
-            <!-- Header -->
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-800">İnteraktif Çözüm</h3>
-                <button id="back-to-main-menu-btn" class="btn btn-secondary">Ana Menüye Dön</button>
-            </div>
+            <div class="flex justify-between items-center mb-4">...</div>
+            <div class="progress-section mb-6">...</div>
             
-            <!-- Progress -->
-            <div class="progress-section mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div class="progress-info">
-                        <div class="flex justify-between items-center mb-2">
-                            <h4 class="text-lg font-semibold text-gray-800">Adım ${stepData.stepNumber} / ${stepData.totalSteps}</h4>
-                            <span class="text-sm text-gray-500">${Math.round(progress)}% tamamlandı</span>
-                        </div>
-                        <div class="progress-bar bg-gray-200 h-2 rounded-full overflow-hidden">
-                            <div class="progress-fill bg-blue-500 h-full transition-all duration-500" 
-                                style="width: ${progress}%"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="attempt-info">
-                        <div class="flex justify-end items-center gap-x-2 mb-2">
-                            <h4 class="text-lg font-semibold text-gray-800">Deneme Hakkı:</h4>
-                            <span class="text-sm font-medium ${stepData.remainingAttempts <= 1 ? 'text-red-500' : stepData.remainingAttempts <= 2 ? 'text-orange-500' : 'text-green-500'}">
-                                ${stepData.remainingAttempts} / ${stepData.maxAttempts} kaldı
-                            </span>
-                        </div>
-                        <div class="attempt-dots flex justify-end gap-1"> 
-                            ${generateAttemptDots(stepData.attempts, stepData.maxAttempts)}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Step Description -->
             <div class="step-description mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <h4 class="font-semibold text-blue-800 mb-2 flex items-center gap-2">
-                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                        ${stepData.stepNumber}
-                    </span>
+                    <span class="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">${stepData.stepNumber}</span>
                     Bu Adımda Yapılacak:
                 </h4>
-                <div class="text-blue-700 smart-content" id="interactive-step-desc" data-content="${escapeHtml(stepData.stepDescription)}">
-                    ${escapeHtml(stepData.stepDescription)}
+                <div class="smart-content text-blue-700" id="interactive-step-desc" data-content="${escapeHtml(combinedDescription || '')}"></div>
             </div>
             
-            <!-- Warning Container -->
-            <div id="interactive-warning-container" class="mb-4"></div>
-            
-            <!-- Options -->
-            <div class="options-section mb-6">
-                <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 12l2 2 4-4"/>
-                        <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"/>
-                    </svg>
-                    Doğru çözüm adımını seçin:
-                </h4>
-                <div class="options-grid space-y-3" id="interactive-options-container">
-                    ${generateInteractiveOptions(stepData.options)}
-                </div>
             </div>
-            
-            <!-- Action Buttons -->
-            <div class="action-buttons flex flex-wrap gap-3 mb-4">
-                <button id="interactive-submit-btn" class="btn btn-primary flex-1" disabled>
-                    Seçimi Onayla
-                </button>
-                <button id="interactive-hint-btn" class="btn btn-secondary">
-                    💡 İpucu
-                </button>
-            </div>
-            
-            <!-- Result Container -->
-            <div id="interactive-result-container" class="result-section hidden mb-4"></div>
-            
-            <!-- Navigation -->
-            <div class="navigation-section flex justify-between mt-6 pt-4 border-t">
-                <div class="text-sm text-gray-500">
-                    <p><strong>Kurallar:</strong></p>
-                    <ul class="text-xs mt-1 space-y-1">
-                        <li>• İlk adımda yanlış: Adımı tekrarlarsınız</li>
-                        <li>• Diğer adımlarda yanlış: Baştan başlarsınız</li>
-                        <li>• Toplam ${stepData.maxAttempts} deneme hakkınız var</li>
-                    </ul>
-                </div>
-                </div>
-        </div>
     `;
 }
-
 function generateAttemptDots(attempts, maxAttempts) {
     return Array.from({ length: maxAttempts }, (_, i) => `
         <div class="w-3 h-3 rounded-full ${i < attempts ? 'bg-red-400' : 'bg-gray-200'

@@ -1,10 +1,10 @@
 // =================================================================================
-//  MathAi - UI Modülü - Gelişmiş Render ve Hata Yönetimi
+//  MathAi - UI Modülü - Yeni Render Sistemi ile Tam Entegre
 // =================================================================================
 
 import { globalRenderManager } from './globalRenderManager.js';
 
-// js/modules/ui.js içindeki showLoading fonksiyonunu bununla değiştirin
+// Loading, Success, Error fonksiyonları (değişiklik yok)
 export function showLoading(message) {
     const resultContainer = document.getElementById('result-container');
     const statusMessage = document.getElementById('status-message');
@@ -12,14 +12,12 @@ export function showLoading(message) {
     if (!resultContainer || !statusMessage) return;
 
     if (message === false) {
-        // Sadece, eğer içinde başka bir hata/başarı mesajı yoksa result container'ı gizle.
         if (!statusMessage.innerHTML || statusMessage.innerHTML.trim() === '') {
              resultContainer.classList.add('hidden');
         }
         return;
     }
 
-    // Ana konteynerin görünürlüğüne dokunma, sadece status mesajını doldur ve göster.
     resultContainer.classList.remove('hidden');
     statusMessage.innerHTML = `
          <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-8 w-8 animate-spin"></div>
@@ -29,7 +27,6 @@ export function showLoading(message) {
     statusMessage.classList.remove('hidden');
 }
 
-// js/modules/ui.js içindeki showSuccess fonksiyonunu bununla değiştirin
 export function showSuccess(message, autoHide = true, hideDelay = 3000) {
     const resultContainer = document.getElementById('result-container');
     const statusMessage = document.getElementById('status-message');
@@ -50,7 +47,6 @@ export function showSuccess(message, autoHide = true, hideDelay = 3000) {
         setTimeout(() => {
             statusMessage.innerHTML = '';
             statusMessage.classList.add('hidden');
-            // Eğer solution-output görünür değilse, result-container'ı gizle
             const solutionOutput = document.getElementById('solution-output');
             if (solutionOutput && solutionOutput.classList.contains('hidden')) {
                 resultContainer.classList.add('hidden');
@@ -59,7 +55,6 @@ export function showSuccess(message, autoHide = true, hideDelay = 3000) {
     }
 }
 
-// js/modules/ui.js içindeki showError fonksiyonunu bununla değiştirin
 export function showError(message, showResetButton = false, onReset = () => {}) {
     const resultContainer = document.getElementById('result-container');
     const statusMessage = document.getElementById('status-message');
@@ -68,7 +63,7 @@ export function showError(message, showResetButton = false, onReset = () => {}) 
 
     resultContainer.classList.remove('hidden');
     statusMessage.classList.remove('hidden');
-    statusMessage.className = ''; // Önceki stilleri temizle
+    statusMessage.className = '';
 
     let errorHTML = `
         <div class="flex flex-col items-center justify-center space-y-3 p-4 bg-red-100 text-red-700 rounded-lg">
@@ -101,11 +96,6 @@ export function showError(message, showResetButton = false, onReset = () => {}) 
     }
 }
 
-/**
- * Animasyonlu adım adım yükleme mesajı gösterir.
- * @param {Array} steps - Gösterilecek adımlar dizisi [{title, description}].
- * @param {number} stepDelay - Her adım arasındaki gecikme (ms).
- */
 export function showAnimatedLoading(steps, stepDelay = 1500) {
     const resultContainer = document.getElementById('result-container');
     const statusMessage = document.getElementById('status-message');
@@ -142,107 +132,200 @@ export function showAnimatedLoading(steps, stepDelay = 1500) {
     showStep();
 }
 
-// ESKİ renderMath ve renderMathInContainer FONKSİYONLARINI SİLİP BUNLARI YAPIŞTIRIN
+// =================================================================================
+// ✅ YENİ RENDER FONKSİYONLARI - Metadata-Optimized
+// =================================================================================
 
-export async function renderMath(content, element, displayMode = false) {
-    // Bu fonksiyon artık tüm render işlemlerini merkezi yöneticimize yönlendiren basit bir aracıdır.
+/**
+ * Gelişmiş render fonksiyonu - Field name ile optimize edilmiş
+ * @param {string} content - Render edilecek içerik
+ * @param {HTMLElement} element - Hedef element
+ * @param {boolean} displayMode - Blok render modu
+ * @param {string} fieldName - API field adı (metadata için)
+ */
+export async function renderMath(content, element, displayMode = false, fieldName = null) {
     if (!content || !element) return false;
     
     try {
-        // globalRenderManager'daki ana render fonksiyonunu çağırıyoruz.
-        // Hata yakalama, yeniden deneme gibi tüm karmaşık mantık artık burada.
+        // Field name'i element'e ekle (metadata için)
+        if (fieldName) {
+            element.setAttribute('data-field', fieldName);
+        }
+        
+        // Gelişmiş render sistemi ile render et
         return await globalRenderManager.renderElement(element, content, { displayMode });
     } catch (error) {
-        // Eğer renderElement'in tüm denemeleri başarısız olursa, bir hata fırlatır.
-        // Bu hatayı burada yakalayıp kullanıcıya bir fallback gösteriyoruz.
-        console.error(`Render işlemi kalıcı olarak başarısız oldu:`, { content, error });
-        element.textContent = content; // En kötü senaryo: içeriği düz metin olarak göster.
+        console.error(`Render işlemi başarısız:`, { content, fieldName, error });
+        element.textContent = content;
         element.classList.add('render-error');
         return false;
     }
 }
 
-export async function renderMathInContainer(container, displayMode = false) {
-    // Bu fonksiyon da artık tüm container render işlemlerini merkezi yöneticimize yönlendiriyor.
+/**
+ * Container render fonksiyonu - Progress tracking ile
+ * @param {HTMLElement} container - Container element
+ * @param {boolean} displayMode - Blok render modu
+ * @param {Function} onProgress - Progress callback
+ */
+export async function renderMathInContainer(container, displayMode = false, onProgress = null) {
     if (!container) return;
     
     try {
         await globalRenderManager.renderContainer(container, {
             displayMode,
-            onProgress: (completed, total) => {
-                // İsteğe bağlı olarak render ilerlemesini konsolda takip edebiliriz.
-                console.log(`Render ilerlemesi: ${completed}/${total} tamamlandı.`);
-            }
+            onProgress: onProgress || ((completed, total) => {
+                const percentage = Math.round((completed / total) * 100);
+                console.log(`📊 Render: ${completed}/${total} (%${percentage})`);
+            })
         });
+        
+        console.log('✅ Container render tamamlandı');
+        
     } catch (error) {
-        console.error('Container render işlemi sırasında bir hata oluştu:', error);
-        // Burada container içindeki hatalı elementler zaten .render-error sınıfı almış olacak.
+        console.error('❌ Container render hatası:', error);
+        // Hatalı elementler zaten .render-error sınıfına sahip
     }
-}
-// Yeni: Render sistemini başlat
-export async function initializeRenderSystem() {
-    console.log('🚀 Render sistemi başlatılıyor...');
-    const initialized = await globalRenderManager.initializeMathJax();
-    
-    if (initialized) {
-        console.log('✅ Render sistemi hazır');
-    } else {
-        console.error('❌ Render sistemi başlatılamadı');
-    }
-    
-    return initialized;
 }
 
 /**
- * Smart content elementlerini render eder.
- * @param {HTMLElement} container - İçerik container'ı.
+ * Smart content render - Field name detection ile
+ * @param {HTMLElement} container - Container element
  */
 export async function renderSmartContent(container) {
     if (!container) return;
+    
     const smartElements = container.querySelectorAll('.smart-content[data-content]');
+    console.log(`🎯 ${smartElements.length} smart element bulundu`);
+    
     for (const element of smartElements) {
         const content = element.getAttribute('data-content');
+        const fieldName = element.getAttribute('data-field') || inferFieldFromContext(element);
+        
         if (content) {
             try {
-                await renderMath(content, element, false);
+                await renderMath(content, element, false, fieldName);
             } catch (error) {
+                console.warn(`Smart content render hatası:`, { fieldName, error });
                 element.textContent = content;
+                element.classList.add('render-error');
             }
         }
     }
 }
 
 /**
- * LaTeX content elementlerini render eder.
- * @param {HTMLElement} container - İçerik container'ı.
+ * LaTeX content render - Display mode ile
+ * @param {HTMLElement} container - Container element
  */
 export async function renderLatexContent(container) {
     if (!container) return;
+    
     const latexElements = container.querySelectorAll('.latex-content[data-latex]');
+    console.log(`📐 ${latexElements.length} latex element bulundu`);
+    
     for (const element of latexElements) {
         const latex = element.getAttribute('data-latex');
+        const fieldName = element.getAttribute('data-field') || 'cozum_lateks';
+        
         if (latex) {
             try {
-                await renderMath(latex, element, true);
+                await renderMath(latex, element, true, fieldName);
             } catch (error) {
+                console.warn(`LaTeX content render hatası:`, { fieldName, error });
                 element.textContent = latex;
+                element.classList.add('render-error');
             }
         }
     }
 }
-// ui.js
+
+// =================================================================================
+// ✅ YENİ YARDIMCI FONKSİYONLAR
+// =================================================================================
 
 /**
- * Ekranda kısa süreli, animasyonlu ve potansiyel olarak değişen metinli bir geri bildirim mesajı gösterir.
- * Eğer bir mesaj dizisi verilirse, metinler sırayla gösterilir.
- * @param {string|string[]} messages Gösterilecek mesaj veya mesajlar dizisi.
- * @param {string} icon Mesajın yanındaki emoji veya SVG ikonu.
- * @param {number} duration Her bir mesajın ekranda kalma süresi (ms).
- * @returns {Promise<void>} Animasyon bittiğinde resolve olan bir Promise.
+ * Element context'inden field name'i çıkarsamaya çalışır
+ * @param {HTMLElement} element - Analiz edilecek element
+ * @returns {string|null} - Bulunan field name
+ */
+function inferFieldFromContext(element) {
+    // Parent container'lardan çıkarım yap
+    const parentSelectors = {
+        '.solution-step': 'adimAciklamasi',
+        '.interactive-workspace': 'adimAciklamasi', 
+        '.option-label': 'metin_lateks',
+        '.hint-container': 'ipucu',
+        '.error-container': 'hataAciklamasi',
+        '.result-container': 'sonucKontrolu'
+    };
+    
+    for (const [selector, fieldName] of Object.entries(parentSelectors)) {
+        if (element.closest(selector)) {
+            return fieldName;
+        }
+    }
+    
+    // Class name'den çıkarım
+    if (element.classList.contains('step-description')) return 'adimAciklamasi';
+    if (element.classList.contains('option-text')) return 'metin_lateks';
+    if (element.classList.contains('hint-text')) return 'ipucu';
+    
+    return null;
+}
+
+/**
+ * Render sistemini başlatır ve hazırlık yapar
+ * @returns {Promise<boolean>} - Başlatma başarılı mı?
+ */
+export async function initializeRenderSystem() {
+    console.log('🚀 Gelişmiş render sistemi başlatılıyor...');
+    
+    try {
+        const initialized = await globalRenderManager.initializeMathJax();
+        
+        if (initialized) {
+            console.log('✅ Render sistemi hazır');
+            
+            // Performance monitoring başlat (sadece development'da)
+            if (window.location.hostname === 'localhost') {
+                setupRenderMonitoring();
+            }
+            
+            return true;
+        } else {
+            console.error('❌ Render sistemi başlatılamadı');
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('❌ Render sistemi başlatma hatası:', error);
+        return false;
+    }
+}
+
+/**
+ * Render performance monitoring (sadece development)
+ */
+function setupRenderMonitoring() {
+    setInterval(() => {
+        const stats = globalRenderManager.getStats();
+        if (stats.successful > 0) {
+            console.log('📊 Render Stats:', {
+                successful: stats.successful,
+                failed: stats.failed,
+                metadataEfficiency: stats.metadataEfficiency,
+                avgRenderTime: stats.avgRenderTimeMs + 'ms'
+            });
+        }
+    }, 30000); // Her 30 saniyede rapor
+}
+
+/**
+ * Gelişmiş temporary message - Multiple messages support
  */
 export function showTemporaryMessage(messages, icon = '🚀', duration = 2000) {
     return new Promise(resolve => {
-        // Hem tek bir string hem de string dizisi ile çalışabilmesi için:
         const messageArray = Array.isArray(messages) ? messages : [messages];
         let currentIndex = 0;
         
@@ -260,41 +343,48 @@ export function showTemporaryMessage(messages, icon = '🚀', duration = 2000) {
             <div class="flex flex-col items-center gap-4 bg-white rounded-2xl shadow-xl p-8 transform animate-scale-in w-72">
                 <div class="text-6xl">${icon}</div>
                 <p id="dynamic-message-p" class="text-lg font-semibold text-gray-800 text-center h-14 flex items-center justify-center transition-opacity duration-300"></p>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
+        
         const pElement = document.getElementById('dynamic-message-p');
+        const progressBar = document.getElementById('progress-bar');
 
         const updateMessage = () => {
             if (!pElement) return;
-            // Metni değiştirmeden önce yumuşak bir geçiş için soluklaştır
+            
             pElement.style.opacity = '0';
             setTimeout(() => {
                 pElement.textContent = messageArray[currentIndex];
-                // Yeni metni göster
                 pElement.style.opacity = '1';
-            }, 200); // 0.2 saniyelik geçiş animasyonu
+                
+                // Progress bar güncelle
+                const progress = ((currentIndex + 1) / messageArray.length) * 100;
+                progressBar.style.width = `${progress}%`;
+            }, 200);
         };
 
-        // İlk mesajı hemen göster
+        // İlk mesajı göster
         updateMessage();
         
-        // Eğer birden fazla mesaj varsa, aralarında dönmek için bir interval başlat
+        // Çoklu mesaj için interval
         let messageInterval;
         if (messageArray.length > 1) {
             messageInterval = setInterval(() => {
-                currentIndex = (currentIndex + 1) % messageArray.length; // Başa dönmeyi sağlar
+                currentIndex = (currentIndex + 1) % messageArray.length;
                 updateMessage();
-            }, duration); // Her mesaj 'duration' süresi kadar kalır
+            }, duration);
         }
 
-        // Toplam gösterim süresi
         const totalDuration = (messageArray.length > 1) 
-            ? duration * messageArray.length + 1000 // Birden fazla mesaj varsa, sonuncusunun da görünmesi için ek süre
+            ? duration * messageArray.length + 1000
             : duration;
 
         setTimeout(() => {
-            if (messageInterval) clearInterval(messageInterval); // Interval'ı temizle
+            if (messageInterval) clearInterval(messageInterval);
             
             overlay.classList.remove('animate-fade-in');
             overlay.classList.add('animate-fade-out');
@@ -303,30 +393,64 @@ export function showTemporaryMessage(messages, icon = '🚀', duration = 2000) {
                 if (overlay.parentNode) {
                     overlay.remove();
                 }
-                resolve(); // Her şey bittiğinde Promise'i çöz.
+                resolve();
             }, 300);
         }, totalDuration);
     });
 }
 
+/**
+ * HTML escape utility
+ */
 export function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
+/**
+ * Render cache temizleme (view değişikliklerinde)
+ */
+export function clearRenderCache() {
+    if (globalRenderManager) {
+        globalRenderManager.reset();
+        console.log('🧹 Render cache temizlendi');
+    }
+}
 
+/**
+ * Render istatistiklerini göster (debug için)
+ */
+export function showRenderStats() {
+    if (globalRenderManager) {
+        const stats = globalRenderManager.getStats();
+        console.table(stats);
+        return stats;
+    }
+    return null;
+}
 
+// =================================================================================
+// ✅ GLOBAL ERİŞİM ve EXPORT
+// =================================================================================
 
-// Dosyanın sonunda global erişim ekleyin
+// Global window erişimi (backward compatibility)
 if (typeof window !== 'undefined') {
     window.mathUI = {
         renderMath, 
         renderMathInContainer, 
         renderSmartContent, 
         renderLatexContent,
-        globalRenderManager // Sadece ana render yöneticimiz kalsın
+        initializeRenderSystem,
+        clearRenderCache,
+        showRenderStats,
+        globalRenderManager
     };
 }
 
-
+// Modern ES6 exports
+export {
+    //globalRenderManager,
+    //clearRenderCache,
+    //showRenderStats
+};

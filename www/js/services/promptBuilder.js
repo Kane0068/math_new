@@ -1,964 +1,730 @@
 /**
- * Geliştirilmiş Prompt Builder - Matematik Öğretmen Asistanı
- * Daha güçlü, daha tutarlı ve daha etkili sonuçlar için optimize edilmiş versiyon
+ * ULTRA-ROBUST PROMPT BUILDER SYSTEM - FINAL VERSION
+ * Zero-error design with complete globalRenderManager compatibility
+ * Optimized for LLM comprehension and consistent JSON output
  */
 
-export function buildUnifiedSolutionPrompt(problemContext) {
-    const cleanProblemContext = (problemContext || "").trim();
+// ============================================================================
+// CORE SYSTEM CONSTANTS - Immutable instruction templates
+// ============================================================================
 
-    // Boş veya çok kısa girdi kontrolü
-    if (cleanProblemContext.length < 3) {
-        return `
-            MUTLAK KURAL: Aşağıdaki JSON'u HARFİ HARFİNE döndür. Tek bir karakter bile ekleme veya değiştirme:
-            {
-              "problemOzeti": { "verilenler": ["Geçerli bir soru girilmedi."], "istenen": "Lütfen metin kutusuna çözmek istediğiniz soruyu yazın veya fotoğrafını yükleyin.", "konu": "Hata", "zorlukSeviyesi": "kolay" },
-              "adimlar": [],
-              "tamCozumLateks": ["\\\\text{Soru bulunamadı.}"],
-              "sonucKontrolu": "Geçerli bir soru girilmediği için kontrol yapılamaz.",
-              "_error": "INVALID_INPUT_ERROR",
-              "_fallback": true
-            }
-        `;
+const SYSTEM_CONSTANTS = {
+    JSON_RULES: {
+        CRITICAL: [
+            "OUTPUT MUST BE VALID JSON ONLY",
+            "START WITH { END WITH }",
+            "NO TEXT BEFORE OR AFTER JSON",
+            "USE DOUBLE QUOTES FOR STRINGS",
+            "ESCAPE SPECIAL CHARACTERS PROPERLY"
+        ],
+        VALIDATION: {
+            NO_TRAILING_COMMAS: true,
+            REQUIRED_QUOTES: "double",
+            ESCAPE_BACKSLASH: "\\\\\\\\",
+            ESCAPE_QUOTE: '\\"',
+            ESCAPE_NEWLINE: "\\n"
+        }
+    },
+    
+    MATH_CATEGORIES: {
+        VALID: [
+            "EQUATIONS: 2x+5=15, x²-4x+3=0",
+            "ARITHMETIC: 15+27, 125÷5, 3×8-12",
+            "FRACTIONS: 2/3+1/4, 5/6×3/10",
+            "PERCENTAGES: %20, 120'nin %15'i",
+            "GEOMETRY: alan, çevre, hacim",
+            "WORD_PROBLEMS: para, hız, zaman, karışım"
+        ],
+        INVALID: [
+            "GREETINGS: merhaba, nasılsın",
+            "TEST_TEXT: test, deneme, 123",
+            "INCOMPLETE: sadece sayılar, bağlamsız",
+            "UNCLEAR: sonuç nedir, cevap?"
+        ]
+    },
+    
+    RENDER_TYPES: {
+        TEXT: "Pure text without math",
+        INLINE_MATH: "Text with $math$ expressions",
+        PURE_LATEX: "Only LaTeX without dollar signs",
+        MIXED_CONTENT: "Complex paragraph with multiple $math$ parts"
+    },
+    
+    RENDER_METADATA_TEMPLATE: {
+        contentTypes: {
+            adimAciklamasi: ["inline_math"],
+            cozum_lateks: ["pure_latex"],
+            ipucu: ["inline_math"],
+            hataAciklamasi: ["inline_math"],
+            tamCozumLateks: ["pure_latex"],
+            sonucKontrolu: ["inline_math"]
+        },
+        mathComplexity: "medium",
+        priorityElements: ["cozum_lateks", "tamCozumLateks"],
+        renderHints: {
+            hasFractions: false,
+            hasExponents: false,
+            hasRoots: false,
+            hasMatrices: false,
+            hasEquations: false,
+            estimatedRenderTime: "medium"
+        }
+    }
+};
+
+// ============================================================================
+// HELPER FUNCTIONS - Utilities for robust prompt construction
+// ============================================================================
+
+/**
+ * Sanitizes input to prevent prompt injection and ensure clean processing
+ */
+function sanitizeInput(input) {
+    if (!input || typeof input !== 'string') return '';
+    
+    return input
+        .trim()
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+        .replace(/```/g, '\\`\\`\\`') // Escape code blocks
+        .replace(/\\/g, '\\\\') // Escape backslashes
+        .substring(0, 5000); // Limit length to prevent overflow
+}
+
+/**
+ * Creates render metadata that's perfectly compatible with globalRenderManager
+ */
+function createRenderMetadata(problemType = "medium") {
+    const baseMetadata = JSON.parse(JSON.stringify(SYSTEM_CONSTANTS.RENDER_METADATA_TEMPLATE));
+    
+    // Adjust based on problem type
+    if (problemType === "simple") {
+        baseMetadata.mathComplexity = "low";
+        baseMetadata.priorityElements = ["cozum_lateks"];
+        baseMetadata.renderHints.estimatedRenderTime = "fast";
+    } else if (problemType === "complex") {
+        baseMetadata.mathComplexity = "high";
+        baseMetadata.priorityElements = ["cozum_lateks", "tamCozumLateks", "adimAciklamasi"];
+        baseMetadata.renderHints.estimatedRenderTime = "slow";
+    } else if (problemType === "none") {
+        baseMetadata.mathComplexity = "none";
+        baseMetadata.priorityElements = [];
+        baseMetadata.renderHints.estimatedRenderTime = "instant";
+        // Set all content types to text for error cases
+        Object.keys(baseMetadata.contentTypes).forEach(key => {
+            baseMetadata.contentTypes[key] = ["text"];
+        });
     }
     
-    return `
-# ROL VE MİSYON
-Sen, 20 yıllık deneyime sahip, pedagoji uzmanı bir matematik öğretmenisin. Görevin, öğrenciye sadece çözüm vermek değil, matematiksel düşünme becerisini geliştirmektir.
-
-# TEMEL DİREKTİF [MUTLAK UYULMASI ZORUNLU]
-1. **YALNIZCA** geçerli JSON formatında yanıt ver
-2. JSON öncesi/sonrası **HİÇBİR** açıklama, yorum veya metin olmayacak
-3. Yanıt **TAM OLARAK** { ile başlayıp } ile bitecek
-4. JSON syntax hatası durumunda sistem çökecek - **MÜKEMMEL** syntax kullan
-
-# PROBLEM ANALİZ PROTOKOLÜ
-
-## AŞAMA 1: MATEMATİK PROBLEMİ TESPİTİ
-
-### ✅ MATEMATİK PROBLEMİ OLAN DURUMLAR:
-**Cebirsel İfadeler:**
-- Denklemler: "2x + 5 = 15", "x² - 4x + 3 = 0", "3x³ - 2x² + x - 1 = 0"
-- Eşitsizlikler: "2x + 3 > 7", "|x - 2| < 5"
-- Denklem sistemleri: "x + y = 10 ve 2x - y = 5"
-
-**Aritmetik İşlemler:**
-- Temel işlemler: "15 + 27", "125 ÷ 5", "3 × 8 - 12"
-- Üslü sayılar: "2³ + 4²", "√16 + ∛27"
-- Mutlak değer: "|−5| + |3|"
-
-**Kesir ve Rasyonel Sayılar:**
-- Kesir işlemleri: "2/3 + 1/4", "5/6 × 3/10", "7/8 ÷ 2/3"
-- Ondalık sayılar: "3.14 + 2.86", "0.5 × 0.2"
-
-**Yüzde ve Oran:**
-- Yüzde hesaplamaları: "%20'si 50 olan sayı", "120'nin %15'i"
-- Oran-orantı: "3:5 = x:20", "Ters orantı problemleri"
-
-**Kelime Problemleri:**
-- Para problemleri: "Ali'nin 20 TL'si var, 8 TL harcadı..."
-- Hareket problemleri: "Bir araç saatte 60 km hızla..."
-- İş problemleri: "3 işçi 6 günde bitiriyorsa..."
-- Karışım problemleri: "%30'luk tuzlu su ile %50'lik..."
-
-**Geometri:**
-- Alan/Çevre: "Kenarı 5 cm olan karenin alanı"
-- Hacim: "Yarıçapı 3 cm olan kürenin hacmi"
-- Açı hesaplamaları: "İç açıları toplamı 540° olan çokgen"
-
-**İleri Matematik:**
-- Limit: "lim(x→2) (x² - 4)/(x - 2)"
-- Türev: "f(x) = x³ - 3x² fonksiyonunun türevi"
-- İntegral: "∫(2x + 3)dx"
-- Matris/Determinant: "2x2 matrisin determinantı"
-
-### ❌ MATEMATİK PROBLEMİ OLMAYAN DURUMLAR:
-- Sosyal etkileşim: "merhaba", "nasılsın", "teşekkürler"
-- Test ifadeleri: "test", "deneme", "123"
-- Eksik/belirsiz: "10 kuş", "5 elma" (soru yok)
-- Sadece sayı dizileri: "1,2,3,4,5" (işlem/soru yok)
-- Tanımsız talepler: "bana yardım et", "matematik"
-- Bağlamsız ifadeler: "sonuç nedir", "cevap?"
-
-**Problem Metni:** "${cleanProblemContext}"
-
-## AŞAMA 2: YANIT ÜRETİMİ
-
-### MATEMATİK PROBLEMİ DEĞİLSE:
-\`\`\`json
-{
-  "problemOzeti": { 
-    "verilenler": ["Matematik sorusu tespit edilemedi."], 
-    "istenen": "Lütfen çözmek istediğiniz matematik sorusunu yazın. Örnek: 2x + 5 = 15 veya 25 + 17 = ?", 
-    "konu": "Hata", 
-    "zorlukSeviyesi": "belirsiz" 
-  },
-  "adimlar": [],
-  "tamCozumLateks": ["\\\\text{Çözüm yapılamadı}"],
-  "sonucKontrolu": "Matematik sorusu olmadığı için kontrol yapılamaz.",
-  "_error": "NOT_MATH_PROBLEM",
-  "_fallback": true
+    return baseMetadata;
 }
-\`\`\`
 
-### MATEMATİK PROBLEMİYSE - PEDAGOJİK ÇÖZÜM ŞABLONU:
+/**
+ * Builds error response template with render metadata
+ */
+function buildErrorResponse(errorType, userMessage) {
+    return {
+        problemOzeti: {
+            verilenler: ["Geçerli giriş bulunamadı"],
+            istenen: userMessage,
+            konu: "Hata",
+            zorlukSeviyesi: "belirsiz"
+        },
+        adimlar: [],
+        tamCozumLateks: ["\\\\text{İşlem yapılamadı}"],
+        sonucKontrolu: "Kontrol yapılamaz",
+        renderMetadata: createRenderMetadata("none"),
+        _error: errorType,
+        _fallback: true
+    };
+}
+
+// ============================================================================
+// MAIN PROMPT BUILDER FUNCTIONS
+// ============================================================================
+
+/**
+ * Builds the main unified solution prompt with enhanced robustness
+ */
+export function buildUnifiedSolutionPrompt(problemContext) {
+    const cleanContext = sanitizeInput(problemContext);
+    
+    // Handle empty or invalid input immediately
+    if (!cleanContext || cleanContext.length < 3) {
+        const errorResponse = buildErrorResponse(
+            "INVALID_INPUT_ERROR",
+            "Lütfen çözmek istediğiniz matematik sorusunu yazın."
+        );
+        
+        return `
+# SYSTEM DIRECTIVE: RETURN EXACT JSON
+
+${JSON.stringify(errorResponse, null, 2)}
+
+# END OF RESPONSE - OUTPUT ABOVE JSON EXACTLY
+`;
+    }
+    
+    // Build the main prompt with clear section separation
+    return `
+# ===== SYSTEM CONFIGURATION =====
+# Role: Expert Mathematics Teacher (20 years experience)
+# Output: STRICT JSON FORMAT ONLY
+# Language: Turkish
+# Method: Pedagogical step-by-step solution
+
+# ===== CRITICAL RULES =====
+${SYSTEM_CONSTANTS.JSON_RULES.CRITICAL.map(rule => `# ${rule}`).join('\n')}
+
+# ===== INPUT ANALYSIS =====
+# User Input: "${cleanContext}"
+# Input Length: ${cleanContext.length} characters
+# Analysis Required: Determine if this is a valid mathematics problem
+
+# ===== CLASSIFICATION MATRIX =====
+
+## VALID MATHEMATICS PROBLEMS:
+${SYSTEM_CONSTANTS.MATH_CATEGORIES.VALID.map(cat => `- ${cat}`).join('\n')}
+
+## INVALID INPUTS:
+${SYSTEM_CONSTANTS.MATH_CATEGORIES.INVALID.map(cat => `- ${cat}`).join('\n')}
+
+# ===== RESPONSE GENERATION PROTOCOL =====
+
+## CASE 1: NOT A MATHEMATICS PROBLEM
+If the input is NOT a valid mathematics problem, return EXACTLY this JSON:
+
+${JSON.stringify(buildErrorResponse("NOT_MATH_PROBLEM", "Lütfen bir matematik sorusu girin. Örnek: 2x+5=15"), null, 2)}
+
+## CASE 2: VALID MATHEMATICS PROBLEM
+If the input IS a valid mathematics problem, generate a solution following this EXACT structure:
 
 {
   "problemOzeti": {
-    "verilenler": [
-      "Problem içindeki somut veriler",
-      "Her veri ayrı bir dizi elemanı olarak",
-      "Öğrencinin anlayacağı dilde, teknik terimler açıklanarak"
-    ],
-    "istenen": "Bulunması gereken değerin net tanımı (x'in değeri, sonuç, vs.)",
-    "konu": "Aritmetik|Cebir|Geometri|Kesirler|Yüzdeler|Denklemler|Analiz|Kombinatorik",
+    "verilenler": ["Array of given data points", "Each point separate"],
+    "istenen": "What needs to be found",
+    "konu": "Aritmetik|Cebir|Geometri|Kesirler|Yüzdeler|Denklemler|Analiz",
     "zorlukSeviyesi": "kolay|orta|zor"
   },
   "adimlar": [
     {
       "adimNo": 1,
-      "adimBasligi": "Adımın 5-10 kelimelik özeti",
-      "adimAciklamasi": "PEDAGOJİK AÇIKLAMA [ZORUNLU İÇERİK]: 
-        1) Bu adımı NEDEN yapıyoruz? (Hedef nedir?)
-        2) Hangi matematik KURALI/TEOREMİ kullanılıyor?
-        3) Bu kural NASIL uygulanır? (Adım adım)
-        4) DİKKAT edilmesi gereken noktalar neler?
-        5) Bu adım atlanırsa ne olur?
-        Matematiksel ifadeler $...$ içinde. En az 2-3 cümle.",
-      "cozum_lateks": "Bu adımın matematiksel sonucu ($ işareti OLMADAN)",
-      "odak_alan_lateks": "Önceki adımdan değişen kısım veya null",
-      "ipucu": "SOKRATIK İPUCU: Cevabı vermeyen, öğrenciyi düşündüren, yönlendirici soru. 'Unutma ki...' veya 'Dikkat et...' ile başlayabilir.",
+      "adimBasligi": "Step title (5-10 words)",
+      "adimAciklamasi": ["Each thought as separate string", "Use $ for math: $x+5=10$"],
+      "cozum_lateks": "Pure LaTeX result WITHOUT dollar signs",
+      "odak_alan_lateks": "Changed part or null",
+      "ipucu": "Guiding hint without giving answer",
       "yanlisSecenekler": [
         {
-          "metin_lateks": "Öğrencilerin %30'unun yaptığı TİPİK hata ($ olmadan)",
-          "hataAciklamasi": "HATA ANALİZİ: 1) Bu hata NEDEN yapılır? (kavram yanılgısı) 2) NASIL fark edilir? 3) DOĞRUSU nasıl bulunur? En az 2 cümle."
+          "metin_lateks": "Common wrong answer WITHOUT dollar signs",
+          "hataAciklamasi": "Why this is wrong and how to fix it"
         },
         {
-          "metin_lateks": "Başka bir YAYGIN hata ($ olmadan)",
-          "hataAciklamasi": "PEDAGOJİK DÜZELTME: Hatanın kök nedeni + Doğru yaklaşım + Kontrol yöntemi"
+          "metin_lateks": "Another common mistake",
+          "hataAciklamasi": "Explanation of this error"
         }
       ]
     }
   ],
-  "tamCozumLateks": [
-    "Başlangıç durumu veya problem ifadesi",
-    "Her ara adımın sonucu sırayla",
-    "En sade haldeki final sonuç"
-  ],
-  "sonucKontrolu": "DOĞRULAMA YÖNTEMİ: Öğrenciye sonucu NASIL kontrol edeceğini öğreten, adım adım açıklama. Ters işlem, yerine koyma veya alternatif çözüm yolu göster. Matematiksel ifadeler $...$ içinde. En az 2-3 cümle."
+  "tamCozumLateks": ["Step 1 result", "Step 2 result", "Final answer"],
+  "sonucKontrolu": "Verification method with $math$ expressions",
+  "renderMetadata": {
+    "contentTypes": {
+      "adimAciklamasi": ["inline_math"],
+      "cozum_lateks": ["pure_latex"],
+      "ipucu": ["inline_math"],
+      "hataAciklamasi": ["inline_math"],
+      "tamCozumLateks": ["pure_latex"],
+      "sonucKontrolu": ["inline_math"]
+    },
+    "mathComplexity": "low|medium|high",
+    "priorityElements": ["cozum_lateks", "tamCozumLateks"],
+    "renderHints": {
+      "hasFractions": boolean,
+      "hasExponents": boolean,
+      "hasRoots": boolean,
+      "hasMatrices": boolean,
+      "hasEquations": boolean,
+      "estimatedRenderTime": "instant|fast|medium|slow"
+    }
+  }
 }
 
-# PEDAGOJİK ÇÖZÜM KURALLARI [KRİTİK]
+# ===== RENDER METADATA RULES (CRITICAL FOR FRONTEND) =====
 
-## 1. ADIM SAYISI OPTİMİZASYONU:
-| Problem Tipi | Minimum Adım | Maksimum Adım | Kural |
-|-------------|--------------|---------------|--------|
-| Çok basit (5+3) | 2 | 3 | Her işlem ayrı gösterilmeli |
-| Basit denklem (x+5=10) | 3 | 4 | Her cebirsel işlem ayrı |
-| Orta zorluk | 4 | 6 | Mantıksal gruplamalar |
-| Karmaşık | 5 | 8 | Ara sonuçlar vurgulanmalı |
+## MANDATORY renderMetadata Structure:
+The renderMetadata field is REQUIRED and must ALWAYS include ALL these fields:
 
-**ALTIN KURAL:** Her adım TEK BİR matematiksel kavram öğretmeli!
+### contentTypes (REQUIRED - tells frontend how to render each field):
+- "text": Pure text, no math symbols
+- "inline_math": Text with $math$ expressions mixed in
+- "pure_latex": ONLY LaTeX code, NO dollar signs, NO text
+- "mixed_content": Complex paragraphs with multiple separate $math$ parts
 
-## 2. ADIM AÇIKLAMALARI - 5N1K YÖNTEMİ:
-- **NE** yapıyoruz? → İşlemin tanımı
-- **NEDEN** yapıyoruz? → Matematiksel gerekçe
-- **NASIL** yapıyoruz? → Uygulama detayları
-- **NE ZAMAN** kullanılır? → Bu yöntemin geçerli olduğu durumlar
-- **NEREDE** hata yapılabilir? → Dikkat edilecek noktalar
-- **KİM** için uygun? → Seviye uygunluğu
+### Field-Specific Content Types:
+- adimAciklamasi: Usually ["inline_math"] or ["mixed_content"]
+- cozum_lateks: ALWAYS ["pure_latex"]
+- ipucu: Usually ["inline_math"] or ["text"]
+- hataAciklamasi: Usually ["inline_math"]
+- tamCozumLateks: ALWAYS ["pure_latex"]
+- sonucKontrolu: Usually ["inline_math"]
 
-### MÜKEMMEL AÇIKLAMA ÖRNEĞİ:
-"Bu adımda eşitliğin her iki tarafından 5 çıkarıyoruz. NEDEN? Çünkü $x$'i yalnız bırakarak değerini bulmak istiyoruz. Matematikte eşitlik dengesi kuralı der ki: Eşitliğin bir tarafına yaptığımız işlemi, diğer tarafa da yapmalıyız. Böylece denge bozulmaz. DİKKAT: Çıkarma işleminde işaret değişikliğini unutma! $+5$ ifadesi karşı tarafa $-5$ olarak geçer."
+### mathComplexity (REQUIRED):
+- "low": Basic arithmetic (+, -, ×, ÷)
+- "medium": Fractions, simple equations, exponents
+- "high": Integrals, matrices, complex functions
 
-## 3. İPUÇLARI - SOKRATIK YÖNTEM:
-### ❌ KÖTÜ İPUÇLARI:
-- "Cevap 5'tir" → Direkt cevap
-- "5 çıkar" → Fazla yönlendirici
-- "Yanlış yaptın" → Motivasyon kırıcı
+### priorityElements (REQUIRED):
+Array of field names to render first for better UX:
+- Simple problems: ["cozum_lateks"]
+- Medium problems: ["cozum_lateks", "tamCozumLateks"]
+- Complex problems: ["cozum_lateks", "tamCozumLateks", "adimAciklamasi"]
 
-### ✅ MÜKEMMEL İPUÇLARI:
-- "Eşitliğin sol tarafında $x$'i yalnız bırakmak için hangi işlemi yapmalısın?"
-- "Hatırla: Karşıya geçen terimler işaret değiştirir. $+10$ karşıya nasıl geçer?"
-- "Sadeleştirmeyi unutma! $\\frac{6}{8}$ kesrini daha sade yazabilir misin?"
-- "Kontrol et: Bulduğun değeri yerine koyarsan eşitlik sağlanıyor mu?"
+### renderHints (REQUIRED - all boolean flags MUST be present):
+{
+  "hasFractions": true if ANY \\frac{}{} in content,
+  "hasExponents": true if ANY ^{} or superscripts,
+  "hasRoots": true if ANY \\sqrt{} in content,
+  "hasMatrices": true if ANY matrix structures,
+  "hasEquations": true if ANY = signs in math,
+  "estimatedRenderTime": "instant|fast|medium|slow"
+}
 
-## 4. YANLIŞ SEÇENEKLER - GERÇEK HATALAR:
-### Kategori 1: İŞARET HATALARI
-- "+10 karşıya +10 olarak geçti" 
-- Açıklama: "Eşitlikte karşı tarafa geçen terimler işaret değiştirir! $+$ ise $-$ olur."
+# ===== STEP-BY-STEP RULES =====
 
-### Kategori 2: İŞLEM SIRASI HATALARI
-- "Önce toplama sonra çarpma yaptı"
-- Açıklama: "İşlem önceliği: 1)Parantez 2)Üs 3)Çarpma-Bölme 4)Toplama-Çıkarma"
+1. ATOMIC STEPS: Each step teaches ONE concept only
+2. STEP COUNT: 
+   - Simple (5+3): 2-3 steps
+   - Equations (x+5=10): 3-4 steps
+   - Complex: 5-8 steps
+3. EXPLANATIONS: Include WHY, HOW, and WHAT TO WATCH FOR
+4. HINTS: Ask questions, don't give answers
+5. WRONG OPTIONS: Must be realistic student mistakes
 
-### Kategori 3: SADELEŞTIRME HATALARI
-- "$\\frac{6}{8} = \\frac{3}{8}$" (sadece pay sadeleştirilmiş)
-- Açıklama: "Kesri sadeleştirirken pay ve paydayı AYNI sayıya böl!"
+# ===== LATEX FORMATTING RULES =====
 
-### Kategori 4: KAVRAM YANILGILARI
-- "$x^2 = 9$ ise $x = 3$" (negatif kök unutulmuş)
-- Açıklama: "Kare kök alırken ± durumunu unutma! $x = ±3$"
+## Fields requiring $ symbols (inline_math):
+- adimAciklamasi: "Text with $x+5=10$ math"
+- ipucu: "Remember $x^2=16$ means..."
+- hataAciklamasi: "The error is in $\\frac{2}{3}$..."
+- sonucKontrolu: "Check: $42-27=15$"
 
-## 5. SONUÇ KONTROLÜ - DOĞRULAMA YÖNTEMLERİ:
+## Fields WITHOUT $ symbols (pure_latex):
+- cozum_lateks: x+5=10
+- metin_lateks: \\frac{2}{3}
+- tamCozumLateks: ["x+5=10", "x=5"]
 
-### Yöntem 1: YERİNE KOYMA
-"Bulduğumuz $x = 5$ değerini başlangıç denkleminde yerine koyalım:
-$2(5) + 10 = 20$ → $10 + 10 = 20$ → $20 = 20$ ✓
-Sol taraf = Sağ taraf, cevabımız doğru!"
+# ===== ESCAPE RULES =====
+- Backslash: \\ becomes \\\\\\\\
+- Quote: " becomes \\"
+- Newline: actual newline becomes \\n
 
-### Yöntem 2: TERS İŞLEM
-"Sonuçtan geriye giderek kontrol edelim:
-$x = 5$ ise, $2x = 10$, buna $10$ eklersek $20$ eder. ✓"
-
-### Yöntem 3: ALTERNATİF ÇÖZÜM
-"Farklı bir yöntemle çözelim ve aynı sonucu bulalım..."
-
-# LATEX FORMATLAMA KURALLARI [MUTLAK UYULMALI]
-
-## TİP 1: METİN İÇİ MATEMATİK ($ kullanılacak alanlar)
-**ALANLAR:** adimAciklamasi, ipucu, hataAciklamasi, sonucKontrolu
-**FORMAT:** Metin içindeki matematik $...$ içinde
-
-### ✅ DOĞRU ÖRNEKLER:
-- "Denklemi çözmek için $x + 5 = 10$ ifadesinden başlıyoruz"
-- "Unutma: $x^2 = 16$ ise $x = ±4$ olur"
-- "$\\frac{2}{3}$ kesrini $\\frac{4}{6}$ olarak genişletebiliriz"
-
-### ❌ YANLIŞ ÖRNEKLER:
-- "Denklemi çözmek için x + 5 = 10 ifadesinden..." ($ yok)
-- "Denklemi çözmek için \\\\(x + 5 = 10\\\\) ifadesinden..." (yanlış format)
-
-## TİP 2: SAF LATEX ($ OLMAYACAK alanlar)
-**ALANLAR:** cozum_lateks, metin_lateks, odak_alan_lateks, tamCozumLateks
-**FORMAT:** Direkt LaTeX, $ işareti YOK
-
-### ✅ DOĞRU ÖRNEKLER:
-- x + 5 = 10
-- \\frac{2}{3} + \\frac{1}{4} = \\frac{11}{12}
-- x^2 - 4x + 3 = 0
-
-### ❌ YANLIŞ ÖRNEKLER:
-- $x + 5 = 10$ ($ var)
-- \\\\[x + 5 = 10\\\\] (gereksiz format)
-
-# KALİTE KONTROL LİSTESİ
-
-## Çözüm Değerlendirme:
-□ Her adım matematiksel olarak doğru mu?
-□ Son cevap EN SADE halde mi? (10/2 ❌ → 5 ✅)
-□ Adımlar mantıklı sırada mı?
-□ Gereksiz adım var mı?
-
-## Pedagojik Değerlendirme:
-□ Her adım bir kavram öğretiyor mu?
-□ Açıklamalar yeterince detaylı mı?
-□ İpuçları yönlendirici mi?
-□ Yanlış seçenekler gerçekçi mi?
-
-## Teknik Değerlendirme:
-□ JSON syntax'ı hatasız mı?
-□ LaTeX formatları doğru mu?
-□ Tüm zorunlu alanlar dolu mu?
-□ Kaçış karakterleri doğru mu? (\\\\ için)
-
-# ÖRNEK ÇÖZÜMLER
-
-## Basit Örnek: "15 + 27"
-\`\`\`json
+# ===== COMPLETE EXAMPLE WITH RENDER METADATA =====
+For equation "2x + 5 = 15":
 {
   "problemOzeti": {
-    "verilenler": ["Birinci sayı: 15", "İkinci sayı: 27"],
-    "istenen": "İki sayının toplamı",
-    "konu": "Aritmetik",
+    "verilenler": ["Denklem: $2x + 5 = 15$"],
+    "istenen": "$x$ değeri",
+    "konu": "Cebir",
     "zorlukSeviyesi": "kolay"
   },
   "adimlar": [
     {
       "adimNo": 1,
-      "adimBasligi": "Toplama İşlemini Hazırlama",
-      "adimAciklamasi": "İki sayıyı toplarken basamak değerlerine dikkat ederiz. $15 + 27$ işleminde önce birlikleri ($5 + 7$), sonra onlukları toplayacağız. Bu yöntem, büyük sayılarla işlem yaparken hata yapma riskini azaltır.",
-      "cozum_lateks": "15 + 27 = ?",
-      "odak_alan_lateks": null,
-      "ipucu": "Toplamayı kolaylaştırmak için sayıları basamaklarına ayırabilirsin. Birlikler basamağından başla!",
+      "adimBasligi": "Sabiti Karşıya Geçirme",
+      "adimAciklamasi": ["Denklemi $2x + 5 = 15$ şeklinde yazıyoruz.", "Her iki taraftan $5$ çıkararak $x$'i yalnız bırakacağız."],
+      "cozum_lateks": "2x + 5 - 5 = 15 - 5",
+      "odak_alan_lateks": "-5",
+      "ipucu": "Eşitliğin her iki tarafına aynı işlemi yapmalısın!",
       "yanlisSecenekler": [
         {
-          "metin_lateks": "32",
-          "hataAciklamasi": "Eldeli toplama unutulmuş! $5 + 7 = 12$ yapar, 1 onluk elde var. Bu eldeyi onluklar basamağına eklemeyi unutma."
-        },
-        {
-          "metin_lateks": "41",
-          "hataAciklamasi": "Hesaplama hatası var. Birlikleri ve onlukları tekrar kontrol et: $5 + 7 = 12$ (2 yaz 1 elde), $1 + 2 + 1 = 4$."
-        }
-      ]
-    },
-    {
-      "adimNo": 2,
-      "adimBasligi": "Toplama İşlemini Tamamlama",
-      "adimAciklamasi": "Birlikler: $5 + 7 = 12$ (2 yaz, 1 elde). Onluklar: $1 + 2 + 1(elde) = 4$. Sonuç: $42$. Kontrol için ters işlem yapabiliriz: $42 - 27 = 15$ ✓",
-      "cozum_lateks": "15 + 27 = 42",
-      "odak_alan_lateks": "42",
-      "ipucu": "Sonucu kontrol etmek için çıkarma işlemi yapabilirsin!",
-      "yanlisSecenekler": [
-        {
-          "metin_lateks": "43",
-          "hataAciklamasi": "Toplama işleminde küçük bir hata var. Adımları tekrar gözden geçir."
-        },
-        {
-          "metin_lateks": "52",
-          "hataAciklamasi": "Elde işleminde hata yapmış olabilirsin. Eldeli toplamayı adım adım yap."
+          "metin_lateks": "2x = 20",
+          "hataAciklamasi": "Sabiti karşıya geçirirken işaret değişir! $+5$ karşıya $-5$ olarak geçer."
         }
       ]
     }
   ],
-  "tamCozumLateks": [
-    "15 + 27",
-    "= 42"
-  ],
-  "sonucKontrolu": "Sonucumuzu kontrol edelim: $42 - 27 = 15$ ✓ İşlem doğru! Ayrıca tahmini kontrol: $15$, $20$'ye yakın; $27$, $30$'a yakın. $20 + 30 = 50$. Bizim sonucumuz $42$, bu da mantıklı!"
+  "tamCozumLateks": ["2x + 5 = 15", "2x = 10", "x = 5"],
+  "sonucKontrolu": "Kontrol: $2(5) + 5 = 10 + 5 = 15$ ✓",
+  "renderMetadata": {
+    "contentTypes": {
+      "adimAciklamasi": ["inline_math"],
+      "cozum_lateks": ["pure_latex"],
+      "ipucu": ["inline_math"],
+      "hataAciklamasi": ["inline_math"],
+      "tamCozumLateks": ["pure_latex"],
+      "sonucKontrolu": ["inline_math"]
+    },
+    "mathComplexity": "low",
+    "priorityElements": ["cozum_lateks", "tamCozumLateks"],
+    "renderHints": {
+      "hasFractions": false,
+      "hasExponents": false,
+      "hasRoots": false,
+      "hasMatrices": false,
+      "hasEquations": true,
+      "estimatedRenderTime": "fast"
+    }
+  }
 }
-\`\`\`
 
-**MUTLAK KURAL:** SADECE JSON döndür, başka HİÇBİR ŞEY ekleme!
+# ===== FINAL INSTRUCTION =====
+# OUTPUT ONLY THE JSON RESPONSE
+# NO EXPLANATIONS BEFORE OR AFTER
+# START WITH { AND END WITH }
+# renderMetadata IS MANDATORY - NEVER OMIT IT
 `;
 }
 
+/**
+ * Builds correction prompt with enhanced error detection
+ */
 export function buildCorrectionPrompt(originalPrompt, faultyResponse, errorMessage) {
+    const errorPreview = sanitizeInput(faultyResponse).substring(0, 500);
+    
     return `
-# ACİL DÜZELTME TALİMATI
+# ===== CRITICAL ERROR CORRECTION TASK =====
 
-## HATA TESPİTİ
-**Parse Hatası:** ${errorMessage}
-**Hatalı Yanıt Önizleme:** ${faultyResponse.substring(0, 500)}...
+## ERROR DETAILS:
+- Parse Error: ${errorMessage}
+- Response Preview: ${errorPreview}...
 
-## DÜZELTME PROTOKOLü
+## COMMON JSON ERRORS TO FIX:
 
-### ADIM 1: HATA ANALİZİ
-Muhtemel hatalar:
-- JSON öncesi/sonrası metin var
-- Eksik/fazla virgül
-- Kaçış karakteri hatası (\\)
-- Tırnak işareti hatası
-- Eksik/fazla parantez
+1. STRUCTURAL ERRORS:
+   - Text before/after JSON → Remove all non-JSON text
+   - Missing brackets → Add { at start, } at end
+   - Unbalanced brackets → Count and balance all { } [ ]
 
-### ADIM 2: OTOMATİK DÜZELTME KURALLARI
+2. COMMA ERRORS:
+   - Trailing comma in last element → Remove comma
+   - Missing comma between elements → Add comma
+   - Comma in empty array [] → Remove comma
 
-#### String Kaçış Karakterleri:
-- \\ → \\\\\\\\ (4 ters slash)
-- " → \\"
-- Yeni satır → \\n
-- Tab → \\t
+3. STRING ERRORS:
+   - Unescaped quotes → Change " to \\"
+   - Wrong quote type → Use only double quotes "
+   - Unescaped backslash → Change \\ to \\\\\\\\
 
-#### Virgül Kuralları:
-- Son elemandan sonra virgül OLMAYACAK
-- Her elemandan sonra (son hariç) virgül OLACAK
+4. LATEX FORMATTING ERRORS:
+   - Wrong format in inline_math fields → Ensure $ symbols
+   - Dollar signs in pure_latex fields → Remove $ symbols
+   - Old LaTeX format \\(...\\) → Change to $...$
 
-#### LaTeX Düzeltmeleri:
-**Metin içi ($ olacak):** adimAciklamasi, ipucu, hataAciklamasi, sonucKontrolu
-- \\(...\\) → $...$
-- \\[...\\] → $...$
-- $$...$$ → $...$
+5. MISSING REQUIRED FIELDS:
+   - Ensure all mandatory fields present
+   - Add renderMetadata if missing
+   - Complete all nested structures
 
-**Saf LaTeX ($ olmayacak):** cozum_lateks, metin_lateks, tamCozumLateks
-- $...$ → ... ($ karakterlerini kaldır)
+## CORRECTION ALGORITHM:
 
-### ADIM 3: YAPISAL KONTROL
-\`\`\`
-{                                    ← Başlangıç
-  "problemOzeti": {                  ← Ana nesne
-    "verilenler": [...],             ← Dizi
-    "istenen": "...",                ← String
-    "konu": "...",                   ← String
-    "zorlukSeviyesi": "..."          ← String (SON ELEMAN, VİRGÜL YOK)
-  },                                 ← Virgül var (devam ediyor)
-  "adimlar": [...],                  ← Dizi
-  "tamCozumLateks": [...],           ← Dizi
-  "sonucKontrolu": "..."             ← String (SON ELEMAN, VİRGÜL YOK)
-}                                    ← Bitiş
-\`\`\`
+STEP 1: Identify the JSON start { and end }
+STEP 2: Remove everything before { and after }
+STEP 3: Fix structural issues (brackets, commas)
+STEP 4: Fix string escaping issues
+STEP 5: Fix LaTeX formatting
+STEP 6: Validate all required fields
+STEP 7: Return ONLY the corrected JSON
 
-## ORİJİNAL İSTEK
-${originalPrompt}
-
-## TALİMAT
-1. Yukarıdaki hataları düzelt
-2. SADECE düzeltilmiş JSON döndür
-3. JSON öncesi/sonrası HİÇBİR açıklama olmasın
-4. { ile başla, } ile bitir
-
-**ŞİMDİ DÜZELTİLMİŞ JSON'U DÖNDÜR:**
+## CORRECTED JSON OUTPUT:
+[Return the corrected JSON here, starting with { and ending with }]
 `;
 }
 
-export function buildMathValidationPrompt(problemContext) {
-    return `
-# MATEMATİK SORUSU DOĞRULAMA SİSTEMİ
-
-## ANALİZ EDİLECEK METİN
-"${problemContext}"
-
-## SINIFLANDIRMA MATRİSİ
-
-### ✅ KESİNLİKLE MATEMATİK (confidence: 0.9-1.0)
-| Kategori | Örnekler | Anahtar Kelimeler |
-|----------|----------|-------------------|
-| Denklemler | 2x+5=15, x²-4=0 | =, x, y, bilinmeyen |
-| Aritmetik | 15+27, 125÷5 | +, -, ×, ÷, toplam, fark |
-| Kesirler | 2/3+1/4 | /, kesir, pay, payda |
-| Yüzdeler | %20'si, 120'nin %15'i | %, yüzde, indirim, artış |
-| Geometri | alan, çevre, hacim | cm, m², kenar, açı |
-| Kelime Problemleri | Ali'nin parası | kaç, toplam, kaldı, harcadı |
-
-### ⚠️ MUHTEMEL MATEMATİK (confidence: 0.5-0.8)
-- Sayı içeren ama soru belirsiz metinler
-- Eksik problem ifadeleri
-- Matematiksel terimler içeren sohbet
-
-### ❌ KESİNLİKLE MATEMATİK DEĞİL (confidence: 0.0-0.4)
-- Selamlaşmalar: merhaba, nasılsın
-- Test metinleri: test, deneme, abc
-- Sadece sayılar: 12345 (bağlam yok)
-- Belirsiz: 10 kuş, 5 elma (işlem yok)
-
-## KARAR ALGORİTMASI
-
-1. **Matematiksel operatör var mı?** (+, -, ×, ÷, =, <, >, ≤, ≥)
-   → VAR: confidence +0.4
-   
-2. **Matematiksel terim var mı?** (toplam, fark, çarpım, bölüm, eşit, kaç)
-   → VAR: confidence +0.3
-   
-3. **Sayısal değer + soru var mı?**
-   → VAR: confidence +0.2
-   
-4. **Problem bağlamı var mı?** (para, zaman, mesafe, miktar)
-   → VAR: confidence +0.1
-
-## ÇIKTI FORMATI
-{
-    "isMathProblem": boolean,
-    "confidence": 0.0-1.0,
-    "category": "Aritmetik|Cebir|Geometri|Kesirler|Yüzdeler|Kelime Problemi|Analiz|İstatistik|Matematik Değil",
-    "reason": "Maksimum 50 karakter açıklama",
-    "educationalMessage": "Kullanıcıya gösterilecek yönlendirici mesaj",
-    "suggestedAction": "solve|clarify|reject"
-}
-
-## ÖRNEK ÇIKTILAR
-
-### Kesin Matematik:
-{
-    "isMathProblem": true,
-    "confidence": 1.0,
-    "category": "Cebir",
-    "reason": "Birinci dereceden bir bilinmeyenli denklem",
-    "educationalMessage": "Harika! Denklemi adım adım çözelim.",
-    "suggestedAction": "solve"
-}
-
-### Belirsiz:
-{
-    "isMathProblem": false,
-    "confidence": 0.3,
-    "category": "Matematik Değil",
-    "reason": "Matematiksel bağlam eksik",
-    "educationalMessage": "Sorunuzu biraz daha detaylandırır mısınız? Örnek: '5 elmanın 3'ünü yedim, kaç kaldı?'",
-    "suggestedAction": "clarify"
-}
-
-### Kesinlikle Değil:
-{
-    "isMathProblem": false,
-    "confidence": 0.0,
-    "category": "Matematik Değil",
-    "reason": "Selamlaşma metni",
-    "educationalMessage": "Merhaba! Size matematik konusunda yardımcı olabilirim. Örnek: 2x + 5 = 15 denklemini çöz.",
-    "suggestedAction": "reject"
-}
-
-**SADECE JSON DÖNDÜR:**
-`;
-}
-
+/**
+ * Builds flexible step validation prompt with enhanced pedagogical approach
+ */
 export function buildFlexibleStepValidationPrompt(studentInput, stepData, mistakeHistory = []) {
-    const solutionRoadmap = stepData.allSteps.map((step, index) =>
-        `  Adım ${index + 1}: ${step.cozum_lateks}`
-    ).join('\n');
-
-    const pastMistakesSection = mistakeHistory.length > 0 ? `
-**ÖĞRENCİ PROFİLİ - HATA GEÇMİŞİ:**
-${mistakeHistory.map((m, i) => `
-Hata ${i + 1}: ${m.type}
-Açıklama: ${m.description}
-Tekrar Sayısı: ${m.count}
-`).join('\n')}
-
-**PEDAGOJİK STRATEJİ:**
-- Tekrarlanan hatalar için sabırlı hatırlatmalar
-- Farklı açıklama teknikleri dene
-- Görsel veya analoji kullan
-- Küçük başarıları vurgula
-    ` : '';
-
+    const cleanInput = sanitizeInput(studentInput);
+    
+    const roadmap = stepData.allSteps
+        .map((step, i) => `Step ${i + 1}: ${step.cozum_lateks}`)
+        .join('\\n');
+    
+    const mistakeProfile = mistakeHistory.length > 0 
+        ? mistakeHistory.map(m => `- ${m.type}: ${m.description} (${m.count}x)`).join('\\n')
+        : 'No previous mistakes';
+    
     return `
-# AKILLI ÖĞRETMEN ASİSTANI - ADIM DEĞERLENDİRME
+# ===== INTELLIGENT STEP EVALUATION SYSTEM =====
 
-## ROL VE YAKLAŞIM
-Sen, Sokratik yöntem uzmanı, sabırlı ve motive edici bir matematik koçusun. Bloom Taksonomisi'ne göre öğrenciyi üst düzey düşünmeye yönlendirirsin.
+## CONFIGURATION:
+- Role: Socratic Method Expert Teacher
+- Language: Turkish (for feedback messages)
+- Approach: Positive, Patient, Guiding
+- Output: STRICT JSON FORMAT
 
-## TEMEL PRENSİPLER
-1. **ASLA** olumsuz kelimeler kullanma (yanlış, hatalı, olmamış, başarısız)
-2. **HER ZAMAN** öğrencinin çabasını takdir et
-3. **DOĞRUDAN CEVAP VERME**, öğrenciyi keşfe yönlendir
-4. **POZİTİF PSİKOLOJİ** kullan - growth mindset geliştir
-5. **SADECE JSON** formatında yanıt ver
+## CURRENT SITUATION:
+- Problem Progress: Step ${stepData.currentStepIndex + 1} of ${stepData.allSteps.length}
+- Expected Answer: ${stepData.correctAnswer}
+- Student Answer: "${cleanInput}"
+- Completion: ${Math.round((stepData.currentStepIndex / stepData.allSteps.length) * 100)}%
 
-## DEĞERLENDİRME VERİLERİ
+## SOLUTION ROADMAP:
+${roadmap}
 
-### Problem Çözüm Haritası:
-\`\`\`
-${solutionRoadmap}
-\`\`\`
+## STUDENT MISTAKE HISTORY:
+${mistakeProfile}
 
-### Mevcut Durum:
-- **Adım:** ${stepData.currentStepIndex + 1}/${stepData.allSteps.length}
-- **Beklenen:** ${stepData.correctAnswer}
-- **Öğrenci Cevabı:** "${studentInput}"
-- **İlerleme:** %${Math.round((stepData.currentStepIndex / stepData.allSteps.length) * 100)}
+## EVALUATION PROTOCOL:
 
-${pastMistakesSection}
+### 1. CHECK MATHEMATICAL EQUIVALENCE:
+- Exact match: Identical to expected
+- Algebraic equivalence: 2x = 2*x = 2·x
+- Numerical equivalence: 0.5 = 1/2 = 0,5
+- Simplified equivalence: 6/8 = 3/4 = 0.75
 
-## DEĞERLENDİRME KRİTERLERİ
+### 2. DETERMINE RESPONSE TYPE:
 
-### 1. MATEMATİKSEL DOĞRULUK ANALİZİ
-- **Tam Eşleşme:** Birebir aynı
-- **Eşdeğer İfadeler:** 
-  - 2x = 2·x = 2*x ✓
-  - x+3 = 3+x ✓ (değişme özelliği)
-  - 6/8 = 3/4 = 0.75 ✓
-- **Notasyon Farklılıkları:**
-  - Ondalık: 0.5 = 0,5 = 1/2
-  - Üs: x² = x^2 = x*x
-  - Kök: √4 = 2 = sqrt(4)
-
-### 2. KAVRAMSAL ANLAMA DEĞERLENDİRMESİ
-- Doğru yaklaşım, yanlış hesaplama → Kısmi başarı
-- Yanlış yaklaşım, doğru hesaplama → Kavram eksikliği
-- Alternatif çözüm yolu → Yaratıcı düşünce
-
-### 3. HATA TİPOLOJİSİ
-| Hata Tipi | Örnek | Pedagogik Yaklaşım |
-|-----------|-------|-------------------|
-| İşaret Hatası | +5 → +5 (karşıya) | "İşaret kuralını hatırlayalım..." |
-| İşlem Hatası | 3×4=7 | "Çarpma işlemini kontrol edelim..." |
-| Sadeleştirme | 6/8 = 6/4 | "Pay ve paydaya dikkat..." |
-| Kavram Yanılgısı | x²=9 → x=3 | "Kare kökün iki değeri..." |
-| Dikkatsizlik | 15+27=41 | "Basamakları tekrar topla..." |
-
-## YANIT ÜRETİM STRATEJİSİ
-
-### ✅ DOĞRU CEVAP İÇİN:
-\`\`\`json
+#### IF CORRECT:
 {
   "isCorrect": true,
-  "feedbackMessage": "[Coşkulu Takdir] 🎯 [Spesifik Övgü] [İleriye Dönük Motivasyon]",
+  "feedbackMessage": "[Turkish] Harika! 🎯 [Specific praise about what they did right] [Motivation for next step]",
   "hintForNext": null,
   "isFinalAnswer": false,
-  "matchedStepIndex": [adım numarası],
+  "matchedStepIndex": [step_number],
   "isStepSkipped": false,
   "proceed_to_next_step": true,
   "mistake_type": null,
   "encouragement_level": "high",
-  "pedagogical_note": "Öğrenci konuyu kavramış"
+  "pedagogical_note": "Student understands concept"
 }
-\`\`\`
 
-**Örnek Mesajlar:**
-- "Muhteşem! 🌟 Denklemi mükemmel bir şekilde sadeleştirdin! Bu adımı tek seferde doğru yapman gerçekten etkileyici. Hadi, bir sonraki adımda da bu başarını sürdür!"
-- "Harika iş! 🎯 Kesri en sade haline getirdin. Matematiksel düşünce yapın gelişiyor! Devam edelim!"
-- "Bravo! 💪 İşlem sırasını perfect uyguladın. Artık daha zor problemlere hazırsın!"
-
-### ⚠️ YANLIŞ CEVAP İÇİN:
-\`\`\`json
+#### IF INCORRECT:
 {
   "isCorrect": false,
-  "feedbackMessage": "[Çabayı Takdir] [Yönlendirici Soru] [Cesaret Verici Kapanış]",
-  "hintForNext": "[Keşfe yönlendiren ipucu - cevabı vermeyen]",
+  "feedbackMessage": "[Turkish] İyi deneme! 🤔 [Guiding question] [Encouragement]",
+  "hintForNext": "[Turkish] [Socratic hint without answer]",
   "isFinalAnswer": false,
   "matchedStepIndex": -1,
   "isStepSkipped": false,
   "proceed_to_next_step": false,
-  "mistake_type": "[Hata kategorisi]",
+  "mistake_type": "sign_error|calculation_error|concept_error|simplification_error",
   "encouragement_level": "supportive",
-  "pedagogical_note": "Öğrenciyi doğru yöne yönlendir"
+  "pedagogical_note": "Guide to correct direction"
 }
-\`\`\`
 
-**Sokratik Yönlendirme Örnekleri:**
-- "Güzel deneme! 🤔 Şimdi şöyle düşünelim: Eşitliğin sol tarafında x'i yalnız bırakmak için +5'i nasıl yok edebiliriz? Hangi işlem +5'i sıfır yapar?"
-- "Yaklaştın! 💭 Kesri sadeleştirirken hem payı hem de paydayı aynı sayıya bölmeyi denedin mi? 6 ve 8'in ortak böleni nedir?"
-- "İyi başlangıç! 🌱 İşlem sırasını hatırlıyor musun? Önce hangi işlemi yapmalıyız: toplama mı çarpma mı?"
-
-### 🔄 ADIM ATLAMA DURUMU:
-\`\`\`json
+#### IF STEP SKIPPED (student jumped ahead):
 {
   "isCorrect": true,
-  "feedbackMessage": "Vay! 🚀 [Adım sayısı] adımı tek seferde yaptın! [Takdir] [Doğrulama sorusu]",
+  "feedbackMessage": "[Turkish] Vay! 🚀 [Number] adımı birden tamamladın! [Praise]",
   "hintForNext": null,
   "isFinalAnswer": false,
-  "matchedStepIndex": [ulaşılan adım],
+  "matchedStepIndex": [reached_step],
   "isStepSkipped": true,
   "proceed_to_next_step": true,
   "mistake_type": null,
   "encouragement_level": "impressed",
-  "steps_skipped": [atlanan adım sayısı]
+  "steps_skipped": [number]
 }
-\`\`\`
 
-## PEDAGOJİK MESAJ ŞABLONLARI
+## PEDAGOGICAL GUIDELINES:
+- NEVER use negative words (yanlış, hatalı, başarısız)
+- ALWAYS find something positive to say
+- ASK questions rather than give answers
+- BUILD confidence with each interaction
+- ADAPT to repeated mistakes with different approaches
 
-### Seviye 1: Başlangıç Başarısı
-"Harika başlangıç! 🌟 [Spesifik başarı]. Kendine güvenin artıyor, belli oluyor!"
-
-### Seviye 2: Orta Düzey İlerleme
-"Etkileyici! 💪 [Teknik detay]. Matematiksel düşüncen gelişiyor!"
-
-### Seviye 3: İleri Düzey Başarı
-"Muhteşem analiz! 🎓 [Kavramsal övgü]. Gerçek bir matematikçi gibi düşünüyorsun!"
-
-### Hata Sonrası Yönlendirme
-"İyi deneme! Şöyle bir düşünelim: [Yönlendirici soru]? [İpucu]. Eminim bulacaksın!"
-
-### Tekrarlayan Hata
-"Sabırlı ol, herkes hata yapar! 🌈 Bu sefer farklı bir açıdan bakalım: [Alternatif açıklama]. [Görsel/Analoji]"
-
-## ÇIKTI KONTROL LİSTESİ
-□ JSON formatı geçerli mi?
-□ Mesaj pozitif ve motive edici mi?
-□ Yönlendirme cevabı vermiyor mu?
-□ Öğrenci seviyesine uygun mu?
-□ Pedagojik değer katıyor mu?
-
-**MUTLAK KURAL: SADECE JSON DÖNDÜR**
+## OUTPUT ONLY JSON - NO OTHER TEXT
 `;
 }
 
 /**
- * API tarafından üretilmiş bir JSON çözümünü kontrol ve düzeltme için prompt oluşturur.
- * Python/JavaScript kodu içermez, sadece doğal dil talimatları verir.
+ * Builds verification prompt with comprehensive quality checks
  */
 export function buildVerificationPrompt(generatedJsonString) {
+    const jsonPreview = sanitizeInput(generatedJsonString);
+    
     return `
-# JSON KALİTE KONTROL VE OPTİMİZASYON SİSTEMİ
+# ===== JSON VERIFICATION AND QUALITY CONTROL =====
 
-## KONTROL EDİLECEK JSON
-\`\`\`json
-${generatedJsonString}
-\`\`\`
+## INPUT JSON TO VERIFY:
+${jsonPreview}
 
-## KATMANLI DOĞRULAMA PROTOKOLü
+## VERIFICATION CHECKLIST:
 
-### KATMAN 1: MATEMATİKSEL DOĞRULUK KONTROLÜ
+### LAYER 1: MATHEMATICAL ACCURACY
+□ All calculations correct
+□ Results in simplest form (6/8 → 3/4)
+□ Steps in logical order
+□ No redundant steps
 
-Aşağıdaki kontrolleri sırayla yap:
+### LAYER 2: JSON STRUCTURE
+□ Valid JSON syntax
+□ All required fields present:
+  - problemOzeti (with verilenler, istenen, konu, zorlukSeviyesi)
+  - adimlar array (with complete step objects)
+  - tamCozumLateks array
+  - sonucKontrolu string
+  - renderMetadata object (MANDATORY)
+□ No trailing commas
+□ Proper bracket balance
 
-1. **İşlem Doğruluğu:**
-   - Her adımdaki matematiksel işlemler doğru mu?
-   - Ara sonuçlar bir önceki adımla tutarlı mı?
-   - Son adımdan final cevaba geçiş mantıklı mı?
+### LAYER 3: LATEX FORMATTING
+□ Inline fields use $ symbols: adimAciklamasi, ipucu, hataAciklamasi, sonucKontrolu
+□ Pure LaTeX fields NO $ symbols: cozum_lateks, metin_lateks, tamCozumLateks
+□ Proper escape sequences
 
-2. **Sadeleştirme Kontrolü - ÇOK ÖNEMLİ:**
-   - Kesirler en sade halde mi? (6/8 yanlış → 3/4 doğru)
-   - Denklem sonuçları sadeleştirilmiş mi? (x = 10/2 yanlış → x = 5 doğru)
-   - Kök ifadeler çözülmüş mü? (√16 yanlış → 4 doğru)
-   - Üslü sayılar hesaplanmış mı? (2³ yanlış → 8 doğru)
+### LAYER 4: RENDER METADATA
+□ All contentTypes fields present and accurate
+□ mathComplexity is valid (low|medium|high|none)
+□ priorityElements array properly formed
+□ All renderHints boolean flags correct
+□ estimatedRenderTime valid (instant|fast|medium|slow)
 
-3. **Mantık Sırası:**
-   - Adımlar mantıklı bir sıra izliyor mu?
-   - Gereksiz veya tekrar eden adım var mı?
-   - Her adım bir sonrakine doğru şekilde bağlanıyor mu?
+### LAYER 5: PEDAGOGICAL QUALITY
+□ Explanations detailed (2-3 sentences minimum)
+□ Hints are Socratic (questions, not answers)
+□ Wrong options are realistic student mistakes
+□ Error explanations are educational
 
-### KATMAN 2: JSON YAPISI KONTROLÜ
+## QUALITY SCORING:
+- Mathematical Accuracy: ___/40
+- JSON Structure: ___/20
+- Pedagogical Quality: ___/25
+- Format Accuracy: ___/10
+- Render Optimization: ___/5
+- TOTAL: ___/100
 
-Zorunlu alanların varlığını kontrol et:
+## OUTPUT RULES:
+IF score >= 80: Return JSON as-is
+IF score < 80: Fix issues and return corrected JSON
 
-**Ana Seviye Zorunlu Alanlar:**
-- problemOzeti (nesne olmalı)
-- adimlar (dizi olmalı)
-- tamCozumLateks (dizi olmalı)
-- sonucKontrolu (string olmalı)
-
-**problemOzeti İçinde Zorunlu:**
-- verilenler (dizi)
-- istenen (string)
-- konu (string)
-- zorlukSeviyesi (string: "kolay", "orta" veya "zor")
-
-**Her Adım İçinde Zorunlu:**
-- adimNo (sayı)
-- adimBasligi (string)
-- adimAciklamasi (string)
-- cozum_lateks (string)
-- ipucu (string)
-- yanlisSecenekler (dizi, en az 2 eleman)
-
-**Her Yanlış Seçenek İçinde Zorunlu:**
-- metin_lateks (string)
-- hataAciklamasi (string)
-
-### KATMAN 3: LATEX FORMATLAMA KONTROLÜ
-
-**KURAL A - Metin İçinde Matematik ($ işareti OLMALI):**
-Bu alanlardaki matematiksel ifadeler $ işaretleri içinde olmalı:
-- adimAciklamasi
-- ipucu
-- hataAciklamasi
-- sonucKontrolu
-
-Yanlış formatları düzelt:
-- Düz metin matematik: x + 5 = 10 → $x + 5 = 10$
-- Eski LaTeX format: \\(...\\) → $...$
-- Eski LaTeX format: \\[...\\] → $...$
-- Çift dolar: $$...$$ → $...$
-
-**KURAL B - Saf LaTeX ($ işareti OLMAMALI):**
-Bu alanlarda $ işareti bulunmamalı:
-- cozum_lateks
-- metin_lateks
-- odak_alan_lateks
-- tamCozumLateks dizisinin elemanları
-
-Yanlış formatları düzelt:
-- $x + 5 = 10$ → x + 5 = 10
-- $\\frac{2}{3}$ → \\frac{2}{3}
-- $(x^2)$ → x^2
-
-### KATMAN 4: PEDAGOJİK KALİTE KONTROLÜ
-
-**Açıklama Kalitesi (adimAciklamasi):**
-Her açıklama şunları içermeli:
-- NEDEN bu adımı yapıyoruz? (Amaç)
-- HANGİ matematik kuralını kullanıyoruz?
-- NASIL uygulanır? (Yöntem)
-- NELERe dikkat edilmeli?
-- Minimum 2-3 cümle uzunluğunda mı?
-
-Eksikse, açıklamayı zenginleştir.
-
-**İpucu Kalitesi:**
-Her ipucu şu özelliklere sahip olmalı:
-- Cevabı direkt vermiyor
-- Yönlendirici soru içeriyor
-- Öğrenciyi düşündürüyor
-- Motive edici bir ton kullanıyor
-
-Zayıfsa, daha iyi bir ipucu yaz.
-
-**Yanlış Seçenek Kalitesi:**
-Her yanlış seçenek:
-- Öğrencilerin gerçekten yapabileceği bir hata mı?
-- Hata açıklaması eğitici mi?
-- En az 2 yanlış seçenek var mı?
-
-Yetersizse, daha gerçekçi hatalar ekle.
-
-### KATMAN 5: ÖZEL KARAKTER VE SYNTAX KONTROLÜ
-
-**Kaçış Karakterleri:**
-JSON string'leri içinde şu düzeltmeleri yap:
-- Tek ters slash → Dört ters slash (\\\\)
-- Kaçışsız tırnak → Kaçışlı tırnak (\\")
-- Satır sonu karakteri → \\n
-- Tab karakteri → \\t
-
-**Virgül Kontrolü:**
-- Son elemandan sonra virgül OLMAMALI
-- Diğer elemanlardan sonra virgül OLMALI
-- Boş dizilerde virgül yok: []
-- Boş nesnelerde virgül yok: {}
-
-**Parantez Dengesi:**
-- Her açılan { için kapanan } var mı?
-- Her açılan [ için kapanan ] var mı?
-- İç içe yapılar doğru sırada kapanıyor mu?
-
-## ÇIKTI KURALLARI
-
-**Kontrol Sonucu:**
-
-EĞER tüm kontroller başarılı VE kalite puanı yüksekse:
-- JSON'u AYNEN, hiçbir değişiklik yapmadan döndür
-
-EĞER herhangi bir hata veya eksiklik varsa:
-- Hataları düzelt
-- Eksikleri tamamla
-- Kaliteyi artır
-- DÜZELTİLMİŞ JSON'u döndür
-
-**ÖNEMLİ:** 
-- SADECE JSON döndür
-- JSON öncesi/sonrası açıklama YAZMA
-- Yanıt { ile başlayıp } ile bitmeli
-
-## KALİTE DEĞERLENDİRME
-
-Her kategoriyi 10 üzerinden puanla:
-
-1. **Matematiksel Doğruluk (Ağırlık: %40)**
-   - İşlemler doğruysa: 5 puan
-   - Sadeleştirme tamlsa: 3 puan
-   - Mantık sırası iyiyse: 2 puan
-
-2. **JSON Yapısı (Ağırlık: %20)**
-   - Tüm zorunlu alanlar varsa: 5 puan
-   - Syntax hatasız ise: 3 puan
-   - Yapı tutarlıysa: 2 puan
-
-3. **Pedagojik Kalite (Ağırlık: %25)**
-   - Açıklamalar yeterliyse: 4 puan
-   - İpuçları iyiyse: 3 puan
-   - Yanlış seçenekler gerçekçiyse: 3 puan
-
-4. **Format Doğruluğu (Ağırlık: %15)**
-   - LaTeX formatları doğruysa: 5 puan
-   - Kaçış karakterleri doğruysa: 3 puan
-   - Özel karakterler sorunsuzsa: 2 puan
-
-**Toplam Puan Hesaplaması:**
-Ağırlıklı ortalama al. 
-
-EĞER toplam puan < 7.5:
-- Eksikleri tamamla ve düzelt
-
-EĞER toplam puan ≥ 7.5:
-- JSON'u aynen döndür
-
-**MUTLAK KURAL: SADECE JSON DÖNDÜR, BAŞKA HİÇBİR ŞEY EKLEME**
+## RETURN ONLY JSON - START WITH { END WITH }
 `;
 }
 
 /**
- * Kullanıcı girdisinin uygunluğunu denetlemek için bir prompt oluşturur.
- * Kod içermez, sadece kurallara dayalı değerlendirme talimatları verir.
+ * Builds math validation prompt with clear categorization
  */
-export function buildInputModerationPrompt(userInput) {
+export function buildMathValidationPrompt(problemContext) {
+    const cleanContext = sanitizeInput(problemContext);
+    
     return `
-# GÜVENLİK VE İÇERİK MODERASYON SİSTEMİ
+# ===== MATHEMATICS PROBLEM VALIDATION =====
 
-## ANALİZ EDİLECEK GİRDİ
-"${userInput}"
+## INPUT TO ANALYZE:
+"${cleanContext}"
 
-## GÜVENLİK DEĞERLENDİRME TALİMATLARI
+## CLASSIFICATION PROTOCOL:
 
-### ADIM 1: İÇERİK KATEGORİZASYONU
+### DEFINITELY MATHEMATICS (confidence 0.9-1.0):
+- Equations with operators: 2x+5=15, x²-4=0
+- Arithmetic operations: 15+27, 125÷5
+- Fractions: 2/3+1/4
+- Percentages: %20, 120'nin %15'i
+- Geometry: alan, çevre, hacim
+- Word problems with mathematical context
 
-Girdiyi aşağıdaki kategorilerden birine yerleştir:
+### POSSIBLY MATHEMATICS (confidence 0.5-0.8):
+- Numbers with unclear context
+- Incomplete mathematical expressions
+- Text mentioning mathematical terms
 
-**🟢 GÜVENLİ KATEGORI (İşleme devam et):**
-- Matematik soruları: Denklemler, işlemler, problemler
-- Öğrenci ifadeleri: "Anlamadım", "bilmiyorum", "zor", "yardım"
-- Sayısal ifadeler: Sayılar, kesirler, yüzdeler
-- Matematik terimleri: İntegral, türev, toplam, çarpım, bölüm
+### NOT MATHEMATICS (confidence 0.0-0.4):
+- Greetings: merhaba, nasılsın
+- Test text: test, deneme
+- Random numbers: 12345
+- Unclear text without mathematical context
 
-**🟡 DİKKAT KATEGORİSİ (Yönlendirme gerekli):**
-- Alakasız selamlaşmalar: "Merhaba", "nasılsın", "naber"
-- Belirsiz ifadeler: "Test", "deneme", "123"
-- Eksik sorular: Sadece sayılar, bağlamsız ifadeler
-- Konu dışı: Matematik dışı genel sorular
+## CONFIDENCE CALCULATION:
+Base: 0.5
++ Mathematical operator: +0.3
++ Mathematical term: +0.2
++ Numbers with context: +0.1
++ Question word: +0.1
+- Non-math content: -0.3
+- Greeting only: cap at 0.4
 
-**🔴 GÜVENSİZ KATEGORI (Reddet):**
-- Küfür ve hakaret içeren ifadeler
-- Tehdit veya şiddet içeren mesajlar
-- Kişisel bilgiler: TC kimlik no, telefon, adres
-- Spam: Anlamsız tekrarlar (ör: "aaaaaaa", "xxxxxx")
-- Zararlı içerik: Nefret söylemi, ayrımcılık
-
-### ADIM 2: GÜVENLİK SKORU HESAPLAMA
-
-Aşağıdaki kurallara göre 0.0 ile 1.0 arası bir güvenlik skoru belirle:
-
-**BAŞLANGIÇ SKORU: 0.5**
-
-**SKOR ARTIRAN FAKTÖRLER:**
-- Matematik operatörü varsa (+, -, ×, ÷, =, <, >): +0.3 puan
-- Matematiksel terim varsa (toplam, fark, çarpım, kaç): +0.2 puan
-- Sayı içeriyorsa: +0.1 puan
-- Soru kelimesi varsa (nasıl, nedir, kaç): +0.1 puan
-
-**SKORU DÜŞÜREN/SIFIRLAYAN FAKTÖRLER:**
-- Küfür/hakaret tespit edilirse: Skoru direkt 0.0 yap
-- Kişisel bilgi tespit edilirse: Skoru direkt 0.0 yap
-- Spam pattern (5+ aynı karakter tekrarı): -0.4 puan
-- Sadece selamlaşma: Skoru maksimum 0.4 ile sınırla
-- Alakasız içerik: -0.2 puan
-
-### ADIM 3: ÖZEL DURUM DEĞERLENDİRMESİ
-
-**Karışık İçerik Durumu:**
-Örnek: "salak soru ama 2x+5=15"
-- Matematik kısmı varsa VE çözülebilir durumda ise
-- cleaned_input alanına temiz matematik sorusunu yaz
-- Nazik bir uyarı mesajı ekle
-- isSafe: true olarak işaretle
-
-**Yazım Hatası Durumu:**
-Örnek: "metematik", "toplma işlemi"
-- Anlaşılabilir matematik içeriği varsa tolere et
-- Normal şekilde işle
-- Düzeltme önerisi sunma (kullanıcıyı utandırma)
-
-**Emoji/Özel Karakter Durumu:**
-Örnek: "2➕2 kaç eder 😊"
-- Matematik anlaşılıyorsa kabul et
-- Emojileri görmezden gel
-- Normal matematik sorusu olarak işle
-
-### ADIM 4: KARAR VE YANIT OLUŞTURMA
-
-**Güvenlik Skoruna Göre Karar:**
-- Skor ≥ 0.5: GÜVENLİ → "process" aksiyonu
-- 0.3 ≤ Skor < 0.5: DİKKATLİ → "redirect" aksiyonu
-- Skor < 0.3: GÜVENSİZ → "reject" aksiyonu
-
-**Mesaj Şablonları:**
-
-GÜVENLİ için:
-- message: null (mesaj gerekmez)
-- suggested_action: "process"
-
-ALAKASIZ için:
-- message: "Merhaba! 👋 Ben matematik sorularını çözmek için buradayım. Hangi konuda yardım istersen? Örnek: 2x + 5 = 15 denklemini çöz."
-- suggested_action: "redirect"
-
-KÜFÜR/HAKARET için:
-- message: "Lütfen nazik bir dil kullanalım! 🌟 Matematik öğrenirken pozitif kalmak önemli. Hangi matematik sorusunda yardımcı olabilirim?"
-- suggested_action: "reject"
-
-SPAM için:
-- message: "Anlamlı bir soru sormayı dener misin? 📝 Örnek: 'Kesirli denklemleri nasıl çözerim?' veya '15 + 27 = ?'"
-- suggested_action: "reject"
-
-KİŞİSEL BİLGİ için:
-- message: "⚠️ Güvenliğin için kişisel bilgilerini paylaşma! Sadece matematik sorularına odaklanalım. Ne öğrenmek istersin?"
-- suggested_action: "reject"
-
-## ÇIKTI JSON FORMATI
-
+## REQUIRED JSON OUTPUT:
 {
-  "isSafe": boolean (true/false),
-  "reason": "safe|küfür|tehdit|kişisel_bilgi|spam|alakasız",
-  "message": "Kullanıcıya gösterilecek mesaj veya null",
-  "confidence": 0.0-1.0 arası güven skoru,
-  "category": "mathematics|off_topic|inappropriate|spam|privacy_risk",
-  "suggested_action": "process|redirect|reject",
-  "cleaned_input": "Temizlenmiş matematik sorusu (eğer varsa) veya null"
+  "isMathProblem": boolean,
+  "confidence": 0.0 to 1.0,
+  "category": "Aritmetik|Cebir|Geometri|Kesirler|Yüzdeler|Kelime Problemi|Analiz|İstatistik|Matematik Değil",
+  "reason": "Brief explanation (max 50 chars)",
+  "educationalMessage": "Helpful message in Turkish",
+  "suggestedAction": "solve|clarify|reject"
 }
 
-## ÖRNEK DEĞERLENDİRMELER
+## EXAMPLE FOR "2x+5=15":
+{
+  "isMathProblem": true,
+  "confidence": 1.0,
+  "category": "Cebir",
+  "reason": "Birinci dereceden denklem",
+  "educationalMessage": "Harika! Denklemi adım adım çözelim.",
+  "suggestedAction": "solve"
+}
 
-**Girdi: "2x + 5 = 15"**
-Değerlendirme: Matematik denklemi, güvenli
-Skor: 0.5 + 0.3 + 0.1 = 0.9
-Çıktı:
+## OUTPUT ONLY JSON
+`;
+}
+
+/**
+ * Builds input moderation prompt with security focus
+ */
+export function buildInputModerationPrompt(userInput) {
+    const cleanInput = sanitizeInput(userInput);
+    
+    return `
+# ===== SECURITY AND CONTENT MODERATION =====
+
+## INPUT TO MODERATE:
+"${cleanInput}"
+
+## SECURITY CATEGORIES:
+
+### 🟢 SAFE (Process normally):
+- Valid mathematics questions
+- Student expressions of confusion
+- Numerical content
+- Mathematical terminology
+
+### 🟡 REDIRECT (Needs guidance):
+- Off-topic greetings
+- Unclear questions
+- Test/trial inputs
+- Non-mathematical queries
+
+### 🔴 REJECT (Block immediately):
+- Profanity or insults
+- Threats or violence
+- Personal information (ID, phone, address)
+- Spam patterns (repeated characters)
+- Harmful content
+
+## SCORING ALGORITHM:
+Starting Score: 0.5
+
+INCREASE SCORE:
++ Math operators present: +0.3
++ Math terms present: +0.2
++ Numbers in context: +0.1
++ Question words: +0.1
+
+DECREASE/ZERO SCORE:
+- Profanity detected: SET TO 0.0
+- Personal info detected: SET TO 0.0
+- Spam pattern (5+ same char): -0.4
+- Only greeting: CAP AT 0.4
+- Unrelated content: -0.2
+
+## DECISION THRESHOLDS:
+- Score >= 0.5: SAFE → process
+- 0.3 <= Score < 0.5: REDIRECT → guide
+- Score < 0.3: REJECT → block
+
+## REQUIRED JSON OUTPUT:
+{
+  "isSafe": boolean,
+  "reason": "safe|profanity|threat|personal_info|spam|unrelated",
+  "message": "User-facing message in Turkish or null",
+  "confidence": 0.0 to 1.0,
+  "category": "mathematics|off_topic|inappropriate|spam|privacy_risk",
+  "suggested_action": "process|redirect|reject",
+  "cleaned_input": "Sanitized math question if extractable, else null"
+}
+
+## EXAMPLE FOR SAFE INPUT "2x+5=15":
 {
   "isSafe": true,
   "reason": "safe",
@@ -969,20 +735,35 @@ Skor: 0.5 + 0.3 + 0.1 = 0.9
   "cleaned_input": null
 }
 
-**Girdi: "merhaba nasılsın"**
-Değerlendirme: Alakasız selamlaşma
-Skor: min(0.5, 0.4) = 0.4
-Çıktı:
+## EXAMPLE FOR GREETING "merhaba nasılsın":
 {
   "isSafe": false,
-  "reason": "alakasız",
-  "message": "Merhaba! 👋 Ben matematik sorularını çözmek için buradayım. Hangi konuda yardım istersen?",
+  "reason": "unrelated",
+  "message": "Merhaba! 👋 Matematik sorularını çözebilirim. Hangi konuda yardım istersin?",
   "confidence": 0.4,
   "category": "off_topic",
   "suggested_action": "redirect",
   "cleaned_input": null
 }
 
-**MUTLAK KURAL: SADECE JSON FORMATINDA YANIT VER**
+## OUTPUT ONLY JSON
 `;
 }
+
+// ============================================================================
+// EXPORT CONFIGURATION
+// ============================================================================
+
+export default {
+    buildUnifiedSolutionPrompt,
+    buildCorrectionPrompt,
+    buildFlexibleStepValidationPrompt,
+    buildVerificationPrompt,
+    buildMathValidationPrompt,
+    buildInputModerationPrompt,
+    // Utility exports
+    sanitizeInput,
+    createRenderMetadata,
+    buildErrorResponse,
+    SYSTEM_CONSTANTS
+};
